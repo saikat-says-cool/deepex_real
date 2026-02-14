@@ -178,7 +178,7 @@ export class DeepExStreamClient {
                     : trimmed.slice(5);
                 const event: SSEEvent = JSON.parse(jsonStr);
 
-                if ((event as Record<string, unknown>).type === 'stage_data') {
+                if ((event as unknown as Record<string, unknown>).type === 'stage_data') {
                     console.log(`[DeepEx] Received stage_data from ${endpoint}:`, event);
                     stageData = event as unknown as Record<string, unknown>;
                 } else {
@@ -459,12 +459,5 @@ export class DeepExStreamClient {
             isThinking: false,
             isFinalizing: false,
         });
-    }
-
-    /**
-     * Get current state
-     */
-    getState(): StreamState {
-        return { ...this.state };
     }
 }

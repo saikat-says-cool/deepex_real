@@ -130,12 +130,12 @@ export function MessageBubble({ message, loadThoughtLogs }: MessageBubbleProps) 
                         {message.intent_metadata && (
                             <div className="classification-tags" style={{ padding: '0 16px 8px' }}>
                                 <span className="tag tag-domain">
-                                    {(message.intent_metadata as Record<string, unknown>).domain as string}
+                                    {(message.intent_metadata as unknown as Record<string, unknown>).domain as string}
                                 </span>
                                 <span className={`tag tag-mode ${message.mode === 'ultra_deep' ? 'ultra' : ''}`}>
                                     {getModeLabel()}
                                 </span>
-                                {((message.intent_metadata as Record<string, unknown>).reasoning_modes as string[] || []).map((rm: string) => (
+                                {((message.intent_metadata as unknown as Record<string, unknown>).reasoning_modes as string[] || []).map((rm: string) => (
                                     <span key={rm} className="tag tag-reasoning">{rm}</span>
                                 ))}
                                 {message.was_escalated && (
