@@ -23,7 +23,7 @@ interface UseDeepExReturn {
     deleteConversation: (id: string) => Promise<void>;
 
     // Messaging
-    sendMessage: (content: string, modeOverride?: ReasoningMode) => Promise<string | undefined>;
+    sendMessage: (content: string, modeOverride?: ReasoningMode, imageUrl?: string) => Promise<string | undefined>;
     stopStream: () => void;
 
     // Stream State
@@ -145,7 +145,7 @@ export function useDeepEx(): UseDeepExReturn {
 
     // ── Messaging ──────────────────────────────────────────────
     const sendMessage = useCallback(
-        async (content: string, modeOverride?: ReasoningMode) => {
+        async (content: string, modeOverride?: ReasoningMode, imageUrl?: string) => {
             if (!clientRef.current) return;
 
             // Ensure a persisted conversation exists (lazy create)
@@ -157,6 +157,7 @@ export function useDeepEx(): UseDeepExReturn {
                 conversation_id: convId,
                 role: 'user',
                 content,
+                image_url: imageUrl || null,
                 mode: null,
                 was_escalated: false,
                 confidence_score: null,
@@ -171,16 +172,18 @@ export function useDeepEx(): UseDeepExReturn {
 
             // Start streaming
             setIsStreaming(true);
-            await clientRef.current.streamMessage(convId, content, modeOverride);
+            await clientRef.current.streamMessage(convId, content, modeOverride, imageUrl);
 
             // After stream completes, reload messages to get persisted versions.
             // In ultra-deep mode, the DB update may lag behind the SSE close,
-            // so we poll briefly until the assistant message has content.
+            // so we poll for up to 10 seconds until the assistant message has content.
             const streamClient = clientRef.current;
             const assistantMsgId = streamClient?.getState().messageId;
+            const finalState = streamClient?.getState();
+            console.log(`[useDeepEx] Stream finished. assistantMsgId: ${assistantMsgId}, finalContent: ${finalState?.finalContent?.length ?? 0} chars, isComplete: ${finalState?.isComplete}, error: ${finalState?.error}`);
 
             let msgs: Message[] | null = null;
-            for (let attempt = 0; attempt < 5; attempt++) {
+            for (let attempt = 0; attempt < 20; attempt++) {
                 const { data } = await supabase
                     .from('messages')
                     .select('*')
@@ -192,16 +195,34 @@ export function useDeepEx(): UseDeepExReturn {
                 // Check if the assistant message has content
                 if (assistantMsgId && msgs) {
                     const assistantMsg = msgs.find(m => m.id === assistantMsgId);
-                    if (assistantMsg && assistantMsg.content) break;
-                } else {
-                    break; // No message ID to wait for
+                    if (assistantMsg && assistantMsg.content) {
+                        break;
+                    }
+                } else if (msgs && msgs.length > 0) {
+                    // If we don't have an ID but have messages, just check the last one
+                    const lastMsg = msgs[msgs.length - 1];
+                    if (lastMsg.role === 'assistant' && lastMsg.content) {
+                        break;
+                    }
                 }
 
                 // Wait 500ms before retrying
                 await new Promise(resolve => setTimeout(resolve, 500));
             }
 
-            if (msgs) setMessages(msgs);
+            if (msgs) {
+                // If we STILL don't have the content in DB but we had it in the stream, 
+                // we'll update the local message state so it doesn't look empty.
+                if (assistantMsgId && finalState?.finalContent) {
+                    const msgIndex = msgs.findIndex(m => m.id === assistantMsgId);
+                    if (msgIndex !== -1 && !msgs[msgIndex].content) {
+                        console.warn('[useDeepEx] DB message still empty after polling. Injecting stream content.');
+                        msgs[msgIndex].content = finalState.finalContent;
+                    }
+                }
+                setMessages(msgs);
+            }
+
             setIsStreaming(false);
 
             // Refresh conversations list (to reflect updated_at)

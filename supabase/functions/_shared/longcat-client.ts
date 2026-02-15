@@ -1,13 +1,36 @@
 // ============================================================
-// LongCat API Client
-// Handles streaming and non-streaming calls to LongCat AI
-// Uses OpenAI-compatible endpoint format
-// Docs: https://api.longcat.chat
+// LongCat API Client — ULTRA RESILIENT
+// Hardened against: timeouts, rate limits, connection resets,
+// DNS failures, 5xx errors, empty responses, network drops
 // ============================================================
 
 import { longcatRotator } from './key-rotation.ts';
 
 const LONGCAT_BASE_URL = 'https://api.longcat.chat/openai/v1';
+
+// ── Retry Configuration ─────────────────────────────────────
+const MAX_RETRIES = 5;
+// Exponential backoff with jitter: ~1s, ~2s, ~4s, ~8s, ~12s
+const BASE_DELAYS = [1000, 2000, 4000, 8000, 12000];
+
+/** Add ±30% jitter to a delay to prevent thundering herd */
+function jitter(ms: number): number {
+    const variance = ms * 0.3;
+    return ms + (Math.random() * variance * 2 - variance);
+}
+
+/** Per-request timeout (45s). Prevents hanging connections from eating up
+ *  the Edge Function's 60s budget. */
+const REQUEST_TIMEOUT_MS = 45_000;
+
+/** Create an AbortSignal that fires after `ms` milliseconds */
+function timeoutSignal(ms: number): { signal: AbortSignal; clear: () => void } {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), ms);
+    return { signal: controller.signal, clear: () => clearTimeout(timer) };
+}
+
+// ── Types ────────────────────────────────────────────────────
 
 interface LongCatMessage {
     role: 'system' | 'user' | 'assistant';
@@ -21,7 +44,6 @@ interface LongCatRequest {
     max_tokens?: number;
     top_p?: number;
     stream?: boolean;
-    // Thinking model specific
     enable_thinking?: boolean;
     thinking_budget?: number;
 }
@@ -65,10 +87,61 @@ export const MODELS = {
     FLASH_THINKING: 'LongCat-Flash-Thinking-2601',
 } as const;
 
-/**
- * Make a non-streaming call to LongCat.
- * Returns the full response content.
- */
+// ── Helpers ──────────────────────────────────────────────────
+
+/** Check if an error is retriable (network, timeout, connection reset, etc.) */
+function isRetriableError(err: unknown): boolean {
+    if (err instanceof DOMException && err.name === 'AbortError') return true; // our timeout
+    if (!(err instanceof Error)) return true; // unknown => retry
+    const msg = err.message.toLowerCase();
+    // Non-retriable: only explicit API errors we already parsed
+    if (msg.startsWith('longcat api error 4') && !msg.includes('429')) return false; // 4xx except 429
+    return true;
+}
+
+/** Build the request body from messages + options */
+function buildBody(
+    messages: LongCatMessage[],
+    options: {
+        model?: string;
+        temperature?: number;
+        maxTokens?: number;
+        topP?: number;
+        enableThinking?: boolean;
+        thinkingBudget?: number;
+    },
+    stream: boolean
+): LongCatRequest {
+    const model = options.model || MODELS.FLASH_CHAT;
+    const isThinkingModel = model === MODELS.FLASH_THINKING || model === MODELS.FLASH_THINKING_V1;
+
+    const body: LongCatRequest = {
+        model,
+        messages,
+        temperature: options.temperature ?? 0.3,
+        max_tokens: options.maxTokens ?? 4096,
+        stream,
+    };
+
+    if (options.topP !== undefined) {
+        body.top_p = options.topP;
+    }
+
+    if (isThinkingModel || options.enableThinking) {
+        body.enable_thinking = true;
+        body.thinking_budget = options.thinkingBudget ?? 4096;
+        if ((body.max_tokens ?? 4096) <= body.thinking_budget) {
+            body.max_tokens = body.thinking_budget + 4096;
+        }
+    }
+
+    return body;
+}
+
+// ══════════════════════════════════════════════════════════════
+// NON-STREAMING (longcatComplete)
+// ══════════════════════════════════════════════════════════════
+
 export async function longcatComplete(
     messages: LongCatMessage[],
     options: {
@@ -76,76 +149,91 @@ export async function longcatComplete(
         temperature?: number;
         maxTokens?: number;
         topP?: number;
-        /** Enable thinking mode (only for LongCat-Flash-Thinking models) */
         enableThinking?: boolean;
-        /** Max tokens for thinking content (min 1024, default 1024) */
         thinkingBudget?: number;
-    } = {}
+    } = {},
+    retryCount = 0
 ): Promise<{ content: string }> {
-    const apiKey = longcatRotator.getNextKey();
-    const isThinkingModel = (options.model || MODELS.FLASH_CHAT) === MODELS.FLASH_THINKING;
+    let attempts = 0;
+    const TOTAL_MAX_ATTEMPTS = 10; // Total attempts including rotations
 
-    const body: LongCatRequest = {
-        model: options.model || MODELS.FLASH_CHAT,
-        messages,
-        temperature: options.temperature ?? 0.3,
-        max_tokens: options.maxTokens ?? 4096,
-        stream: false,
-    };
+    while (attempts < TOTAL_MAX_ATTEMPTS) {
+        const apiKey = longcatRotator.getNextKey();
+        const body = buildBody(messages, options, false);
+        const timeout = timeoutSignal(REQUEST_TIMEOUT_MS);
 
-    if (options.topP !== undefined) {
-        body.top_p = options.topP;
-    }
+        try {
+            const response = await fetch(`${LONGCAT_BASE_URL}/chat/completions`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`,
+                },
+                body: JSON.stringify(body),
+                signal: timeout.signal,
+            });
 
-    // Add thinking parameters for thinking model
-    if (isThinkingModel || options.enableThinking) {
-        body.enable_thinking = true;
-        body.thinking_budget = options.thinkingBudget ?? 4096;
-        // Ensure max_tokens > thinking_budget as per docs
-        if ((body.max_tokens ?? 4096) <= body.thinking_budget) {
-            body.max_tokens = body.thinking_budget + 4096;
-        }
-    }
+            timeout.clear();
 
-    try {
-        const response = await fetch(`${LONGCAT_BASE_URL}/chat/completions`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}`,
-            },
-            body: JSON.stringify(body),
-        });
+            if (!response.ok) {
+                // 429: Rotate key and retry IMMEDIATELY without counting as a "failed" retry
+                if (response.status === 429) {
+                    console.warn(`[LongCat] 429 on key ${apiKey.slice(0, 8)}... rotating...`);
+                    longcatRotator.reportError(apiKey, 15000);
+                    // Don't increment attempts for 429 rotations, unless we've cycled many times
+                    attempts = Math.max(attempts, 2);
+                    continue;
+                }
 
-        if (!response.ok) {
-            const errorText = await response.text();
-            if (response.status === 429) {
-                longcatRotator.reportError(apiKey, 60000);
-                // Retry with a different key
-                return longcatComplete(messages, options);
+                // 5xx: Retry with backoff
+                const is5xx = [500, 502, 503, 504].includes(response.status);
+                if (is5xx && attempts < TOTAL_MAX_ATTEMPTS - 1) {
+                    const delay = jitter(BASE_DELAYS[Math.min(attempts, BASE_DELAYS.length - 1)]);
+                    console.warn(`[LongCat] ${response.status}. Retry ${attempts + 1}/${TOTAL_MAX_ATTEMPTS} in ${Math.round(delay)}ms...`);
+                    longcatRotator.reportError(apiKey, 30000);
+                    await new Promise(r => setTimeout(r, delay));
+                    attempts++;
+                    continue;
+                }
+
+                const errorText = await response.text().catch(() => '');
+                throw new Error(`LongCat API ${response.status}: ${errorText.slice(0, 200)}`);
             }
-            throw new Error(`LongCat API error ${response.status}: ${errorText}`);
-        }
 
-        longcatRotator.reportSuccess(apiKey);
-        const data: LongCatResponse = await response.json();
+            longcatRotator.reportSuccess(apiKey);
+            const data: LongCatResponse = await response.json();
+            const content = data.choices[0]?.message?.content || '';
 
-        return {
-            content: data.choices[0]?.message?.content || '',
-        };
-    } catch (error) {
-        if (error instanceof Error && error.message.includes('LongCat API error')) {
+            // Handle empty response
+            if (!content && attempts < 3) {
+                console.warn(`[LongCat] Empty response. Rotating...`);
+                longcatRotator.reportError(apiKey, 10000);
+                attempts++;
+                continue;
+            }
+
+            return { content };
+
+        } catch (error) {
+            timeout.clear();
+            if (isRetriableError(error) && attempts < TOTAL_MAX_ATTEMPTS - 1) {
+                const delay = jitter(BASE_DELAYS[Math.min(attempts, BASE_DELAYS.length - 1)]);
+                console.warn(`[LongCat] ${error instanceof Error ? error.message.slice(0, 100) : 'Error'}. Retry ${attempts + 1}...`);
+                longcatRotator.reportError(apiKey, 15000);
+                await new Promise(r => setTimeout(r, delay));
+                attempts++;
+                continue;
+            }
             throw error;
         }
-        longcatRotator.reportError(apiKey, 30000);
-        throw error;
     }
+    throw new Error('LongCat failed after maximum rotation attempts.');
 }
 
-/**
- * Make a streaming call to LongCat.
- * Yields content chunks as they arrive via SSE.
- */
+// ══════════════════════════════════════════════════════════════
+// STREAMING (longcatStream)
+// ══════════════════════════════════════════════════════════════
+
 export async function* longcatStream(
     messages: LongCatMessage[],
     options: {
@@ -155,104 +243,121 @@ export async function* longcatStream(
         topP?: number;
         enableThinking?: boolean;
         thinkingBudget?: number;
-    } = {}
+    } = {},
+    retryCount = 0
 ): AsyncGenerator<{ content: string; done: boolean }> {
-    const apiKey = longcatRotator.getNextKey();
-    const isThinkingModel = (options.model || MODELS.FLASH_CHAT) === MODELS.FLASH_THINKING;
+    let attempts = 0;
+    const TOTAL_MAX_ATTEMPTS = 10;
 
-    const body: LongCatRequest = {
-        model: options.model || MODELS.FLASH_CHAT,
-        messages,
-        temperature: options.temperature ?? 0.3,
-        max_tokens: options.maxTokens ?? 4096,
-        stream: true,
-    };
+    while (attempts < TOTAL_MAX_ATTEMPTS) {
+        const apiKey = longcatRotator.getNextKey();
+        const body = buildBody(messages, options, true);
+        const timeout = timeoutSignal(REQUEST_TIMEOUT_MS);
+        let totalYielded = 0;
 
-    if (options.topP !== undefined) {
-        body.top_p = options.topP;
-    }
+        try {
+            const response = await fetch(`${LONGCAT_BASE_URL}/chat/completions`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`,
+                },
+                body: JSON.stringify(body),
+                signal: timeout.signal,
+            });
 
-    // Add thinking parameters for thinking model
-    if (isThinkingModel || options.enableThinking) {
-        body.enable_thinking = true;
-        body.thinking_budget = options.thinkingBudget ?? 4096;
-        if ((body.max_tokens ?? 4096) <= body.thinking_budget) {
-            body.max_tokens = body.thinking_budget + 4096;
-        }
-    }
-
-    try {
-        const response = await fetch(`${LONGCAT_BASE_URL}/chat/completions`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}`,
-            },
-            body: JSON.stringify(body),
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            if (response.status === 429) {
-                longcatRotator.reportError(apiKey, 60000);
-                // Retry with different key
-                yield* longcatStream(messages, options);
-                return;
-            }
-            throw new Error(`LongCat API error ${response.status}: ${errorText}`);
-        }
-
-        longcatRotator.reportSuccess(apiKey);
-
-        const reader = response.body?.getReader();
-        if (!reader) throw new Error('No response body');
-
-        const decoder = new TextDecoder();
-        let buffer = '';
-
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split('\n');
-            buffer = lines.pop() || '';
-
-            for (const line of lines) {
-                const trimmed = line.trim();
-                if (!trimmed || !trimmed.startsWith('data:')) continue; // Just check 'data:'
-
-                const data = trimmed.replace(/^data:\s*/, ''); // Remove 'data:' and optional spaces
-
-                if (data === '[DONE]') {
-                    yield { content: '', done: true };
-                    return;
-                }
-
-                try {
-                    const chunk: LongCatStreamChunk = JSON.parse(data);
-                    const delta = chunk.choices[0]?.delta;
-                    const finishReason = chunk.choices[0]?.finish_reason;
-
-                    if (delta?.content) {
-                        yield { content: delta.content, done: false };
-                    }
-                    if (finishReason === 'stop') {
-                        yield { content: '', done: true };
-                        return;
-                    }
-                } catch (e) {
-                    // Skip malformed chunks but maybe log them
-                    // console.error('JSON Parse error', e, data);
+            if (!response.ok) {
+                timeout.clear();
+                if (response.status === 429) {
+                    console.warn(`[LongCat] 429 on stream... rotating...`);
+                    longcatRotator.reportError(apiKey, 15000);
+                    attempts = Math.max(attempts, 2);
                     continue;
                 }
+                if (attempts < TOTAL_MAX_ATTEMPTS - 1) {
+                    const delay = jitter(1000);
+                    await new Promise(r => setTimeout(r, delay));
+                    attempts++;
+                    continue;
+                }
+                const errorText = await response.text().catch(() => '');
+                throw new Error(`LongCat stream API ${response.status}: ${errorText.slice(0, 100)}`);
             }
-        }
-    } catch (error) {
-        if (error instanceof Error && error.message.includes('LongCat API error')) {
+
+            longcatRotator.reportSuccess(apiKey);
+            const reader = response.body?.getReader();
+            if (!reader) throw new Error('No stream reader');
+
+            const decoder = new TextDecoder();
+            let buffer = '';
+            let lastChunkTime = Date.now();
+
+            // Internal watchdog for this stream instance
+            const watchDog = setInterval(() => {
+                if (Date.now() - lastChunkTime > 30_000) {
+                    console.warn('[LongCat] Stream stalled. Aborting...');
+                    reader.cancel('Stalled').catch(() => { });
+                }
+            }, 10000);
+
+            try {
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    lastChunkTime = Date.now();
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || '';
+
+                    for (const line of lines) {
+                        const trimmed = line.trim();
+                        if (!trimmed || !trimmed.startsWith('data:')) continue;
+                        const dataStr = trimmed.replace(/^data:\s*/, '');
+
+                        if (dataStr === '[DONE]') {
+                            yield { content: '', done: true };
+                            return; // Success!
+                        }
+
+                        try {
+                            const chunk: LongCatStreamChunk = JSON.parse(dataStr);
+                            const content = chunk.choices[0]?.delta?.content;
+                            if (content) {
+                                totalYielded += content.length;
+                                yield { content, done: false };
+                            }
+                            if (chunk.choices[0]?.finish_reason === 'stop') {
+                                yield { content: '', done: true };
+                                return;
+                            }
+                        } catch { continue; }
+                    }
+                }
+            } finally {
+                clearInterval(watchDog);
+                timeout.clear();
+                try { reader.releaseLock(); } catch { /* ignore */ }
+            }
+
+            if (totalYielded > 0) {
+                return; // Normal completion
+            }
+
+            // If we got here with zero content, it's effectively a failure
+            console.warn('[LongCat] Stream empty. Rotating...');
+            attempts++;
+            continue;
+
+        } catch (error) {
+            timeout.clear();
+            if (attempts < TOTAL_MAX_ATTEMPTS - 1) {
+                console.warn(`[LongCat] Stream failed: ${error instanceof Error ? error.message.slice(0, 100) : error}. Rotating...`);
+                longcatRotator.reportError(apiKey, 15000);
+                attempts++;
+                continue;
+            }
             throw error;
         }
-        longcatRotator.reportError(apiKey, 30000);
-        throw error;
     }
 }

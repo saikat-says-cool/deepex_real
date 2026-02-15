@@ -7,6 +7,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SSEStream } from '../_shared/sse-stream.ts';
 import { longcatComplete, longcatStream, MODELS } from '../_shared/longcat-client.ts';
+import { selectModel, logModelSelection, type Complexity } from '../_shared/model-selector.ts';
 import * as prompts from '../_shared/prompts.ts';
 import type { SkepticReport, ConfidenceResult, Source } from '../_shared/types.ts';
 
@@ -18,8 +19,11 @@ const corsHeaders = {
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Time budget: checkpoint if we exceed 80% of the 150s limit
-const TIMEOUT_BUDGET_MS = 120_000;
+// AGGRESSIVE timeout budget: checkpoint if we exceed this limit.
+// Supabase Edge Functions have a ~150s wall-clock limit.
+// Supabase Edge Functions have a ~60-90s wall-clock limit.
+// We checkpoint at 50s to be safe.
+const TIMEOUT_BUDGET_MS = 50_000;
 
 // ── Checkpoint type ──────────────────────────────────────────
 interface SynthCheckpoint {
@@ -58,14 +62,17 @@ Deno.serve(async (req) => {
         } = body;
 
         const convCtx = conversationHistory || '';
+        const complexity: Complexity = body.complexity || 'high'; // Default to 'high' for Ultra-Deep
         const functionStart = Date.now();
 
         const sse = new SSEStream();
         const response = sse.getResponse();
         let layerOrder = initialLayerOrder || 0;
 
+        // Helper: elapsed ms since function start
+        const elapsed = () => Date.now() - functionStart;
         // Helper: check if we're running hot on time
-        const isRunningHot = () => (Date.now() - functionStart) > TIMEOUT_BUDGET_MS;
+        const isRunningHot = () => elapsed() > TIMEOUT_BUDGET_MS;
 
         // Helper: build common checkpoint base
         const checkpointBase = () => ({
@@ -80,15 +87,23 @@ Deno.serve(async (req) => {
             start_time: startTime,
             layer_order: layerOrder,
             conversation_history: conversationHistory,
+            complexity,
         });
 
         (async () => {
             try {
+                console.log(`[Ultra-Synth] Starting. Solver lengths: A=${(solverAResult || '').length}, B=${(solverBResult || '').length}, C=${(solverCResult || '').length}`);
+
                 // ── Layer 3: Skeptic Agent ───────────────────────────
                 sse.emitLayerStart('skeptic_agent', 'Adversarial Analysis');
                 layerOrder++;
                 const layerStart3 = Date.now();
 
+                sse.emitLayerChunk('skeptic_agent', '> Analyzing Solver A/B/C output...\n> Detecting contradictions and flaws...\n');
+
+                const skepticModel = selectModel('skeptic', complexity);
+                logModelSelection('skeptic', complexity, skepticModel);
+                console.log(`[Ultra-Synth] Skeptic starting at +${elapsed()}ms`);
                 const skepticResult = await longcatComplete(
                     [
                         { role: 'system', content: prompts.SKEPTIC_SYSTEM },
@@ -97,8 +112,9 @@ Deno.serve(async (req) => {
                             content: prompts.skepticUserPrompt(query, solverAResult, solverBResult, solverCResult),
                         },
                     ],
-                    { model: MODELS.FLASH_THINKING, enableThinking: true, thinkingBudget: 4096 }
+                    skepticModel
                 );
+                console.log(`[Ultra-Synth] Skeptic done at +${elapsed()}ms (${skepticResult.content.length} chars)`);
 
                 let skepticReport: SkepticReport;
                 try {
@@ -111,7 +127,8 @@ Deno.serve(async (req) => {
                 sse.emitLayerChunk('skeptic_agent', skepticResult.content);
                 sse.emitLayerArtifact('skeptic_agent', skepticReport as unknown as Record<string, unknown>);
 
-                await supabase.from('thought_logs').insert({
+                // Fire-and-forget DB write (non-critical)
+                supabase.from('thought_logs').insert({
                     message_id: messageId,
                     layer: 'skeptic_agent',
                     layer_label: 'Skeptic Agent',
@@ -121,13 +138,13 @@ Deno.serve(async (req) => {
                     status: 'complete',
                     started_at: new Date(layerStart3).toISOString(),
                     completed_at: new Date().toISOString(),
-                });
+                }).then(() => { }).catch(e => console.warn('[Ultra-Synth] DB write failed:', e));
 
                 sse.emitLayerComplete('skeptic_agent', 'Adversarial Analysis');
 
                 // ── Time check: after skeptic ───────────────────────
                 if (isRunningHot()) {
-                    console.log('[Ultra-Synth] Running hot after skeptic, checkpointing...');
+                    console.log(`[Ultra-Synth] Running hot after skeptic (+${elapsed()}ms), checkpointing...`);
                     sse.emitStageData({
                         ...checkpointBase(),
                         checkpoint: { continue_from: 'verifier', skeptic_report: skepticStr },
@@ -141,15 +158,21 @@ Deno.serve(async (req) => {
                 layerOrder++;
                 const layerStart4 = Date.now();
 
+                sse.emitLayerChunk('verifier_agent', '> Verifying claims against search context...\n> Checking for hallucinations...\n');
+
                 const allSolutions = `SOLUTION A:\n${solverAResult}\n\nSOLUTION B:\n${solverBResult}\n\nSOLUTION C:\n${solverCResult}`;
 
+                const verifierModel = selectModel('verifier', complexity);
+                logModelSelection('verifier', complexity, verifierModel);
+                console.log(`[Ultra-Synth] Verifier starting at +${elapsed()}ms`);
                 const verifierResult = await longcatComplete(
                     [
                         { role: 'system', content: prompts.VERIFIER_SYSTEM },
                         { role: 'user', content: prompts.verifierUserPrompt(allSolutions, skepticStr) },
                     ],
-                    { model: MODELS.FLASH_THINKING, enableThinking: true, thinkingBudget: 4096 }
+                    verifierModel
                 );
+                console.log(`[Ultra-Synth] Verifier done at +${elapsed()}ms (${verifierResult.content.length} chars)`);
 
                 let verificationReport: Record<string, unknown>;
                 try {
@@ -167,7 +190,8 @@ Deno.serve(async (req) => {
                 sse.emitLayerChunk('verifier_agent', verifierResult.content);
                 sse.emitLayerArtifact('verifier_agent', verificationReport);
 
-                await supabase.from('thought_logs').insert({
+                // Fire-and-forget DB write (non-critical)
+                supabase.from('thought_logs').insert({
                     message_id: messageId,
                     layer: 'verifier_agent',
                     layer_label: 'Logical Verifier',
@@ -177,13 +201,13 @@ Deno.serve(async (req) => {
                     status: 'complete',
                     started_at: new Date(layerStart4).toISOString(),
                     completed_at: new Date().toISOString(),
-                });
+                }).then(() => { }).catch(e => console.warn('[Ultra-Synth] DB write failed:', e));
 
                 sse.emitLayerComplete('verifier_agent', 'Logical Verification');
 
                 // ── Time check: after verifier ──────────────────────
                 if (isRunningHot()) {
-                    console.log('[Ultra-Synth] Running hot after verifier, checkpointing...');
+                    console.log(`[Ultra-Synth] Running hot after verifier (+${elapsed()}ms), checkpointing...`);
                     sse.emitStageData({
                         ...checkpointBase(),
                         checkpoint: {
@@ -197,16 +221,31 @@ Deno.serve(async (req) => {
                 }
 
                 // ── Layer 5: Synthesizer (Streaming) ─────────────────
+                console.log(`[Ultra-Synth] Synthesizer starting at +${elapsed()}ms`);
                 const synthResult = await runSynthesizer(
                     sse, supabase, messageId, query,
                     solverAResult, solverBResult, solverCResult,
-                    skepticStr, verifierStr, searchContext, convCtx, layerOrder
+                    skepticStr, verifierStr, searchContext, convCtx, layerOrder, complexity
                 );
                 layerOrder = synthResult.layerOrder;
+                console.log(`[Ultra-Synth] Synthesizer done at +${elapsed()}ms (${synthResult.answer.length} chars)`);
+
+                // ── CRITICAL: Save synthesized answer to DB immediately ──
+                // This ensures the answer is persisted even if the function
+                // gets killed by the Deno runtime before reaching final emission.
+                console.log(`[Ultra-Synth] Saving synthesized answer to DB early...`);
+                await supabase
+                    .from('messages')
+                    .update({
+                        content: synthResult.answer,
+                        sources: (sources as Source[])?.length ? sources : null,
+                        total_thinking_time_ms: Date.now() - startTime,
+                    })
+                    .eq('id', messageId);
 
                 // ── Time check: after synthesizer ───────────────────
                 if (isRunningHot()) {
-                    console.log('[Ultra-Synth] Running hot after synthesizer, checkpointing...');
+                    console.log(`[Ultra-Synth] Running hot after synthesizer (+${elapsed()}ms), checkpointing...`);
                     sse.emitStageData({
                         ...checkpointBase(),
                         checkpoint: {
@@ -221,17 +260,20 @@ Deno.serve(async (req) => {
                 }
 
                 // ── Layers 6-7: Meta-Critic + Confidence + Final ────
+                console.log(`[Ultra-Synth] Meta-critic + finalize starting at +${elapsed()}ms`);
                 await runMetaCriticAndFinalize(
                     sse, supabase, messageId, query,
                     solverAResult, solverBResult, solverCResult,
                     skepticStr, verifierStr, searchContext, sources as Source[],
                     startTime, convCtx, layerOrder, synthResult.answer,
-                    () => (Date.now() - functionStart) > TIMEOUT_BUDGET_MS,
-                    checkpointBase
+                    isRunningHot,
+                    checkpointBase,
+                    complexity
                 );
+                console.log(`[Ultra-Synth] All stages complete at +${elapsed()}ms`);
 
             } catch (error) {
-                console.error('Ultra-synth error:', error);
+                console.error(`[Ultra-Synth] Error at +${elapsed()}ms:`, error);
                 sse.emitError(error instanceof Error ? error.message : 'Unknown error');
             }
             sse.close();
@@ -263,10 +305,13 @@ async function runSynthesizer(
     searchContext: string,
     convCtx: string,
     layerOrder: number,
+    complexity: Complexity = 'high',
 ): Promise<{ answer: string; layerOrder: number }> {
     sse.emitLayerStart('synthesizer', 'Synthesizing Final Answer');
     layerOrder++;
     const layerStart5 = Date.now();
+
+    sse.emitLayerChunk('synthesizer', '> Synthesizing consensus from valid points...\n> Merging perspectives...\n\n');
 
     let synthesizedAnswer = '';
     for await (const chunk of longcatStream(
@@ -280,7 +325,7 @@ async function runSynthesizer(
                 ),
             },
         ],
-        { model: MODELS.FLASH_THINKING, temperature: 0.4 }
+        selectModel('synthesizer', complexity)
     )) {
         if (chunk.content) {
             synthesizedAnswer += chunk.content;
@@ -288,28 +333,16 @@ async function runSynthesizer(
         }
     }
 
-    // Fallback if streaming failed
+    // Safety net: if both streaming and fallback produced nothing,
+    // generate a minimal answer from the best solver output
     if (!synthesizedAnswer) {
-        const fallback = await longcatComplete(
-            [
-                { role: 'system', content: prompts.SYNTHESIZER_SYSTEM },
-                {
-                    role: 'user',
-                    content: prompts.synthesizerUserPrompt(
-                        query, solverAResult, solverBResult, solverCResult,
-                        skepticStr, verifierStr, searchContext
-                    ),
-                },
-            ],
-            { model: MODELS.FLASH_THINKING, temperature: 0.4 }
-        );
-        synthesizedAnswer = fallback.content || '';
-        if (synthesizedAnswer) {
-            sse.emitLayerChunk('synthesizer', synthesizedAnswer);
-        }
+        console.error('[Ultra-Synth] Synthesizer produced empty output — using best solver output as fallback');
+        synthesizedAnswer = solverAResult || solverBResult || solverCResult || 'Unable to generate a response. Please try again.';
+        sse.emitLayerChunk('synthesizer', synthesizedAnswer);
     }
 
-    await supabase.from('thought_logs').insert({
+    // Fire-and-forget DB write (non-critical)
+    supabase.from('thought_logs').insert({
         message_id: messageId,
         layer: 'synthesizer',
         layer_label: 'Answer Synthesizer',
@@ -318,7 +351,7 @@ async function runSynthesizer(
         status: 'complete',
         started_at: new Date(layerStart5).toISOString(),
         completed_at: new Date().toISOString(),
-    });
+    }).then(() => { }).catch(e => console.warn('[Ultra-Synth] DB write failed:', e));
 
     sse.emitLayerComplete('synthesizer', 'Synthesizing Final Answer');
 
@@ -347,19 +380,26 @@ async function runMetaCriticAndFinalize(
     synthesizedAnswer: string,
     isRunningHot: () => boolean,
     checkpointBase: () => Record<string, unknown>,
+    complexity: Complexity = 'high',
 ): Promise<void> {
     // ── Layer 6: Meta-Critic ─────────────────────────────
     sse.emitLayerStart('meta_critic', 'Final Quality Check');
     layerOrder++;
     const layerStart6 = Date.now();
 
+    sse.emitLayerChunk('meta_critic', '> Evaluating completeness and quality...\n> Checking for missing elements...\n');
+
+    const metaCriticModel = selectModel('meta_critic', complexity);
+    logModelSelection('meta_critic', complexity, metaCriticModel);
+    console.log(`[Ultra-Synth] Meta-critic starting...`);
     const metaCriticResult = await longcatComplete(
         [
             { role: 'system', content: prompts.META_CRITIC_SYSTEM },
             { role: 'user', content: prompts.metaCriticUserPrompt(query, synthesizedAnswer) },
         ],
-        { model: MODELS.FLASH_THINKING, enableThinking: true, thinkingBudget: 2048 }
+        metaCriticModel
     );
+    console.log(`[Ultra-Synth] Meta-critic done (${metaCriticResult.content.length} chars)`);
 
     let metaCritic: { fully_answers_user: boolean; missing_elements: string[]; quality_assessment: string };
     try {
@@ -368,7 +408,8 @@ async function runMetaCriticAndFinalize(
         metaCritic = { fully_answers_user: true, missing_elements: [], quality_assessment: 'Good' };
     }
 
-    await supabase.from('thought_logs').insert({
+    // Fire-and-forget DB write (non-critical)
+    supabase.from('thought_logs').insert({
         message_id: messageId,
         layer: 'meta_critic',
         layer_label: 'Meta-Critic',
@@ -378,7 +419,7 @@ async function runMetaCriticAndFinalize(
         status: 'complete',
         started_at: new Date(layerStart6).toISOString(),
         completed_at: new Date().toISOString(),
-    });
+    }).then(() => { }).catch(e => console.warn('[Ultra-Synth] DB write failed:', e));
 
     sse.emitLayerArtifact('meta_critic', metaCritic as unknown as Record<string, unknown>);
     sse.emitLayerComplete('meta_critic', 'Final Quality Check');
@@ -416,7 +457,7 @@ async function runMetaCriticAndFinalize(
                     )}\n\n--- META-CRITIC FEEDBACK ---\nMissing elements: ${metaCritic.missing_elements.join(', ')}\nPlease address these gaps.`,
                 },
             ],
-            { model: MODELS.FLASH_THINKING, temperature: 0.4 }
+            { model: MODELS.FLASH_CHAT, temperature: 0.4 } // Re-synth uses reliable Chat model
         )) {
             if (chunk.content) {
                 resynthesized += chunk.content;
@@ -481,13 +522,19 @@ async function runFinalConfidenceAndEmit(
     sse.emitLayerStart('ultra_confidence', 'Final Confidence Assessment');
     layerOrder++;
 
+    sse.emitLayerChunk('ultra_confidence', '> Calculating final confidence score...\n> Assessing remaining uncertainty...\n');
+
+    const ultraConfModel = selectModel('ultra_confidence', complexity);
+    logModelSelection('ultra_confidence', complexity, ultraConfModel);
+    console.log(`[Ultra-Synth] Final confidence starting...`);
     const finalConfResult = await longcatComplete(
         [
             { role: 'system', content: prompts.CONFIDENCE_SYSTEM },
             { role: 'user', content: prompts.confidenceUserPrompt(query, synthesizedAnswer) },
         ],
-        { model: MODELS.FLASH_THINKING, enableThinking: true, thinkingBudget: 1024 }
+        ultraConfModel
     );
+    console.log(`[Ultra-Synth] Final confidence done (${finalConfResult.content.length} chars)`);
 
     let finalConfidence: ConfidenceResult;
     try {
@@ -496,7 +543,8 @@ async function runFinalConfidenceAndEmit(
         finalConfidence = { score: 80, assumptions: [], uncertainty_notes: [] };
     }
 
-    await supabase.from('thought_logs').insert({
+    // Fire-and-forget DB write (non-critical)
+    supabase.from('thought_logs').insert({
         message_id: messageId,
         layer: 'ultra_confidence',
         layer_label: 'Final Confidence',
@@ -506,20 +554,35 @@ async function runFinalConfidenceAndEmit(
         status: 'complete',
         started_at: new Date().toISOString(),
         completed_at: new Date().toISOString(),
-    });
+    }).then(() => { }).catch(e => console.warn('[Ultra-Synth] DB write failed:', e));
 
     sse.emitLayerArtifact('ultra_confidence', finalConfidence as unknown as Record<string, unknown>);
     sse.emitLayerComplete('ultra_confidence', 'Final Confidence Assessment');
 
-    // ── Emit Final Answer ────────────────────────────────
+    // ── Emit Final Answer FIRST (before DB save) ─────────
+    // This ensures the client gets the answer even if the DB save is slow
+    console.log(`[Ultra-Synth] Emitting final answer (${synthesizedAnswer.length} chars)...`);
     sse.emitFinalStart(messageId);
-    const chunkSize = 8;
+    // Use larger chunks (bulk emit) so it renders fully formatted immediately
+    // The user already saw the streaming in the 'synthesizer' thinking block step.
+    const chunkSize = 1000;
     for (let i = 0; i < synthesizedAnswer.length; i += chunkSize) {
         sse.emitFinalChunk(synthesizedAnswer.slice(i, i + chunkSize));
     }
 
-    // Save to DB
-    await supabase
+    sse.emitFinalComplete(
+        finalConfidence.score,
+        finalConfidence.assumptions,
+        finalConfidence.uncertainty_notes,
+        sources?.length ? sources : undefined
+    );
+    console.log(`[Ultra-Synth] Final events emitted successfully`);
+
+    // Save to DB (non-critical — answer already emitted to client)
+    // The early save in the main function already persisted the content,
+    // this just updates with confidence metadata.
+    // Fire-and-forget: the early save already persisted the content
+    supabase
         .from('messages')
         .update({
             content: synthesizedAnswer,
@@ -529,14 +592,9 @@ async function runFinalConfidenceAndEmit(
             sources: sources?.length ? sources : null,
             total_thinking_time_ms: Date.now() - startTime,
         })
-        .eq('id', messageId);
-
-    sse.emitFinalComplete(
-        finalConfidence.score,
-        finalConfidence.assumptions,
-        finalConfidence.uncertainty_notes,
-        sources?.length ? sources : undefined
-    );
+        .eq('id', messageId)
+        .then(() => console.log('[Ultra-Synth] Final DB save complete'))
+        .catch(dbErr => console.error('[Ultra-Synth] Final DB save failed (non-critical):', dbErr));
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -574,6 +632,7 @@ function handleUltraSynthContinuation(
     };
 
     const convCtx = conversationHistory || '';
+    const complexity: Complexity = (body.complexity as Complexity) || 'high';
     const continuationStart = Date.now();
 
     const sse = new SSEStream();
@@ -594,6 +653,7 @@ function handleUltraSynthContinuation(
         start_time: startTime,
         layer_order: layerOrder,
         conversation_history: conversationHistory,
+        complexity,
     });
 
     (async () => {
@@ -612,12 +672,14 @@ function handleUltraSynthContinuation(
 
                 const allSolutions = `SOLUTION A:\n${solverAResult}\n\nSOLUTION B:\n${solverBResult}\n\nSOLUTION C:\n${solverCResult}`;
 
+                const contVerifierModel = selectModel('verifier', complexity);
+                logModelSelection('verifier', complexity, contVerifierModel);
                 const verifierResult = await longcatComplete(
                     [
                         { role: 'system', content: prompts.VERIFIER_SYSTEM },
                         { role: 'user', content: prompts.verifierUserPrompt(allSolutions, skepticStr) },
                     ],
-                    { model: MODELS.FLASH_THINKING, enableThinking: true, thinkingBudget: 4096 }
+                    contVerifierModel
                 );
 
                 let verificationReport: Record<string, unknown>;
@@ -634,7 +696,8 @@ function handleUltraSynthContinuation(
                 sse.emitLayerChunk('verifier_agent', verifierResult.content);
                 sse.emitLayerArtifact('verifier_agent', verificationReport);
 
-                await supabase.from('thought_logs').insert({
+                // Fire-and-forget (non-critical)
+                supabase.from('thought_logs').insert({
                     message_id: messageId,
                     layer: 'verifier_agent',
                     layer_label: 'Logical Verifier',
@@ -644,7 +707,7 @@ function handleUltraSynthContinuation(
                     status: 'complete',
                     started_at: new Date(layerStart).toISOString(),
                     completed_at: new Date().toISOString(),
-                });
+                }).then(() => { }).catch(e => console.warn('[Ultra-Synth] DB write failed:', e));
 
                 sse.emitLayerComplete('verifier_agent', 'Logical Verification');
 
@@ -667,7 +730,7 @@ function handleUltraSynthContinuation(
                 const synthResult = await runSynthesizer(
                     sse, supabase, messageId, query,
                     solverAResult, solverBResult, solverCResult,
-                    skepticStr, verifierStr, searchContext, convCtx, layerOrder
+                    skepticStr, verifierStr, searchContext, convCtx, layerOrder, complexity
                 );
                 layerOrder = synthResult.layerOrder;
                 synthesizedAnswer = synthResult.answer;
@@ -694,7 +757,7 @@ function handleUltraSynthContinuation(
                     solverAResult, solverBResult, solverCResult,
                     skepticStr, verifierStr, searchContext, sources,
                     startTime, convCtx, layerOrder, synthesizedAnswer,
-                    isRunningHot, checkpointBase
+                    isRunningHot, checkpointBase, complexity
                 );
             } else if (checkpoint.continue_from === 'confidence') {
                 // Jump straight to confidence

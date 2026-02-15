@@ -103,6 +103,7 @@ export interface SSEEvent {
 export interface ChatRequest {
     conversation_id: string;
     message: string;
+    image_url?: string;
     mode_override?: ReasoningMode;
 }
 

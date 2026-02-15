@@ -69,7 +69,7 @@ export class KeyRotator {
      * Report that a key hit a rate limit or error.
      * Marks it as unavailable for a cooldown period.
      */
-    reportError(key: string, cooldownMs: number = 60000): void {
+    reportError(key: string, cooldownMs: number = 15000): void {
         const keyState = this.keys.find((k) => k.key === key);
         if (keyState) {
             keyState.errorCount++;
@@ -133,6 +133,22 @@ if (LANGSEARCH_KEYS.length === 0) {
     if (defaultKey) LANGSEARCH_KEYS.push(defaultKey);
 }
 
+// ── Gemini API Keys (Dynamically loaded from Secrets) ────────
+const GEMINI_KEYS = Object.keys(env)
+    .filter(k => k.startsWith('GEMINI_API_KEY_'))
+    .sort((a, b) => {
+        const numA = parseInt(a.split('_').pop() || '0');
+        const numB = parseInt(b.split('_').pop() || '0');
+        return numA - numB;
+    })
+    .map(k => env[k]);
+
+if (GEMINI_KEYS.length === 0) {
+    const defaultKey = Deno.env.get('GEMINI_API_KEY');
+    if (defaultKey) GEMINI_KEYS.push(defaultKey);
+}
+
 // ── Singleton Instances ──────────────────────────────────────
 export const longcatRotator = new KeyRotator(LONGCAT_KEYS);
 export const langsearchRotator = new KeyRotator(LANGSEARCH_KEYS);
+export const geminiRotator = new KeyRotator(GEMINI_KEYS);

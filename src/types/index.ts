@@ -65,6 +65,7 @@ export interface Message {
     conversation_id: string;
     role: MessageRole;
     content: string;
+    image_url: string | null;
     mode: ReasoningMode | null;
     was_escalated: boolean;
     confidence_score: number | null;
@@ -201,6 +202,7 @@ export interface SSEEvent {
 export interface ChatRequest {
     conversation_id: string;
     message: string;
+    image_url?: string;             // Optional attached image URL
     mode_override?: ReasoningMode;  // User can force a mode
 }
 
