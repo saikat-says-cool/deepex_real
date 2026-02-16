@@ -17,13 +17,7 @@ interface MessageBubbleProps {
     loadThoughtLogs: (messageId: string) => Promise<ThoughtLog[]>;
 }
 
-/* ── Confidence color helper ──────────────────────────────── */
-function confidenceColor(score: number): string {
-    if (score >= 80) return '#22c55e';
-    if (score >= 60) return '#eab308';
-    if (score >= 40) return '#f97316';
-    return '#ef4444';
-}
+
 
 export function MessageBubble({ message, loadThoughtLogs }: MessageBubbleProps) {
     const [showThinking, setShowThinking] = useState(true);
@@ -183,7 +177,7 @@ export function MessageBubble({ message, loadThoughtLogs }: MessageBubbleProps) 
                             {/* Sequential Steps */}
                             {sequentialLogs.length > 0 && (
                                 <div className="tb-timeline">
-                                    {sequentialLogs.map((log, i) => (<div key={log.id} className="tb-timeline-step tb-timeline-step--complete">
+                                    {sequentialLogs.map((log, _i) => (<div key={log.id} className="tb-timeline-step tb-timeline-step--complete">
 
                                         <div className="tb-step-icon tb-step-icon--complete">
                                             <svg width="10" height="10" viewBox="0 0 16 16" fill="none">
@@ -225,7 +219,7 @@ export function MessageBubble({ message, loadThoughtLogs }: MessageBubbleProps) 
                             {/* Parallel Solvers */}
                             {parallelLogs.length > 0 && (
                                 <div className="tb-parallel-grid">
-                                    {parallelLogs.map((log, i) => (
+                                    {parallelLogs.map((log, _i) => (
                                         <div key={log.id} className="tb-solver-card tb-solver-card--complete">
                                             <div
                                                 className="tb-solver-header"

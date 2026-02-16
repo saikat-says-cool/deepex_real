@@ -23,7 +23,7 @@ interface UseDeepExReturn {
     deleteConversation: (id: string) => Promise<void>;
 
     // Messaging
-    sendMessage: (content: string, modeOverride?: ReasoningMode, imageUrl?: string) => Promise<string | undefined>;
+    sendMessage: (content: string, modeOverride?: ReasoningMode, imageUrl?: string, modelOverride?: string) => Promise<string | undefined>;
     stopStream: () => void;
 
     // Stream State
@@ -43,6 +43,7 @@ export function useDeepEx(): UseDeepExReturn {
     const [currentConversation, setCurrentConversation] = useState<Conversation | null>(null);
     const [messages, setMessages] = useState<Message[]>([]);
     const [streamState, setStreamState] = useState<StreamState>({
+        conversationId: null,
         messageId: null,
         mode: null,
         classification: null,

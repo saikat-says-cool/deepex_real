@@ -11,20 +11,7 @@ interface ThinkingBlockProps {
     state: StreamState;
 }
 
-const Logo = ({ className, size = 18 }: { className?: string; size?: number }) => (
-    <svg
-        width={size}
-        height={size}
-        viewBox="0 0 100 100"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-        className={className}
-    >
-        <path d="M35 20L65 50L35 80L5 50L35 20Z" stroke="currentColor" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M65 20L95 50L65 80L35 50L65 20Z" stroke="currentColor" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M50 35L65 20L80 35" stroke="currentColor" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-);
+
 
 /* ── Utility: human-readable duration ─────────────────────── */
 function formatDuration(ms: number): string {
@@ -42,12 +29,7 @@ function totalElapsed(steps: ThinkingStep[]): number {
     return latest - earliest;
 }
 
-/* ── Mode metadata ────────────────────────────────────────── */
-const MODE_META: Record<string, { label: string; icon: string; accent: string }> = {
-    instant: { label: 'Instant', icon: '', accent: 'var(--text-tertiary)' },
-    deep: { label: 'Deep Reasoning', icon: '', accent: '#3b82f6' },
-    ultra_deep: { label: 'Ultra-Deep Reasoning', icon: '', accent: '#a855f7' },
-};
+
 
 /* ── Step status → visual mapping ─────────────────────────── */
 function getStepIcon(status: string): React.ReactElement {
@@ -103,13 +85,7 @@ function refineLabel(layer: string, label: string): string {
     return map[layer] || label || layer;
 }
 
-/* ── Confidence color ─────────────────────────────────────── */
-function confidenceColor(score: number): string {
-    if (score >= 80) return '#22c55e';
-    if (score >= 60) return '#eab308';
-    if (score >= 40) return '#f97316';
-    return '#ef4444';
-}
+
 
 /* ═══════════════════════════════════════════════════════════
    MAIN COMPONENT
@@ -127,7 +103,7 @@ export function ThinkingBlock({ state }: ThinkingBlockProps) {
         });
     };
 
-    const { steps, classification, mode, wasEscalated } = state;
+    const { steps, classification, mode } = state;
     const isActive = state.isThinking || state.isFinalizing;
     const elapsed = totalElapsed(steps);
 
@@ -144,7 +120,7 @@ export function ThinkingBlock({ state }: ThinkingBlockProps) {
         [steps]
     );
 
-    const modeInfo = MODE_META[mode || ''] || MODE_META.instant;
+
     const isUltraDeep = mode === 'ultra_deep';
 
     // Don't render for instant mode, or if no steps and no classification
