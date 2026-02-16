@@ -11,6 +11,21 @@ interface ThinkingBlockProps {
     state: StreamState;
 }
 
+const Logo = ({ className, size = 18 }: { className?: string; size?: number }) => (
+    <svg
+        width={size}
+        height={size}
+        viewBox="0 0 100 100"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        className={className}
+    >
+        <path d="M35 20L65 50L35 80L5 50L35 20Z" stroke="currentColor" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M65 20L95 50L65 80L35 50L65 20Z" stroke="currentColor" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M50 35L65 20L80 35" stroke="currentColor" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+);
+
 /* ── Utility: human-readable duration ─────────────────────── */
 function formatDuration(ms: number): string {
     if (ms < 1000) return `${ms}ms`;
@@ -29,9 +44,9 @@ function totalElapsed(steps: ThinkingStep[]): number {
 
 /* ── Mode metadata ────────────────────────────────────────── */
 const MODE_META: Record<string, { label: string; icon: string; accent: string }> = {
-    instant: { label: 'Instant', icon: '⚡', accent: 'var(--text-tertiary)' },
-    deep: { label: 'Deep Reasoning', icon: '🧠', accent: '#3b82f6' },
-    ultra_deep: { label: 'Ultra-Deep Reasoning', icon: '⚛️', accent: '#a855f7' },
+    instant: { label: 'Instant', icon: '', accent: 'var(--text-tertiary)' },
+    deep: { label: 'Deep Reasoning', icon: '', accent: '#3b82f6' },
+    ultra_deep: { label: 'Ultra-Deep Reasoning', icon: '', accent: '#a855f7' },
 };
 
 /* ── Step status → visual mapping ─────────────────────────── */
@@ -101,6 +116,16 @@ function confidenceColor(score: number): string {
    ═══════════════════════════════════════════════════════════ */
 export function ThinkingBlock({ state }: ThinkingBlockProps) {
     const [isOpen, setIsOpen] = useState(true);
+    const [collapsedSteps, setCollapsedSteps] = useState<Set<string>>(new Set());
+
+    const toggleStep = (stepId: string) => {
+        setCollapsedSteps(prev => {
+            const next = new Set(prev);
+            if (next.has(stepId)) next.delete(stepId);
+            else next.add(stepId);
+            return next;
+        });
+    };
 
     const { steps, classification, mode, wasEscalated } = state;
     const isActive = state.isThinking || state.isFinalizing;
@@ -122,34 +147,24 @@ export function ThinkingBlock({ state }: ThinkingBlockProps) {
     const modeInfo = MODE_META[mode || ''] || MODE_META.instant;
     const isUltraDeep = mode === 'ultra_deep';
 
-    // Don't render if no steps and no classification
-    if (steps.length === 0 && !classification) return null;
+    // Don't render for instant mode, or if no steps and no classification
+    if (mode === 'instant' || (steps.length === 0 && !classification)) return null;
 
     return (
         <div
             className={`tb-container ${isUltraDeep ? 'tb-container--ultra' : ''} ${isActive ? 'tb-container--active' : 'tb-container--complete'}`}
         >
-            {/* ── Animated top border ──────────────────────────── */}
-            {isActive && <div className="tb-scan-line" />}
-
             {/* ═══ HEADER ════════════════════════════════════════ */}
             <button className="tb-header" onClick={() => setIsOpen(!isOpen)} type="button">
                 <div className="tb-header-left">
-                    {/* Status indicator */}
                     <div className={`tb-header-indicator ${isActive ? 'active' : 'complete'}`}>
                         {isActive ? (
-                            <div className="tb-header-pulse" />
+                            <div className="tb-rotating-square" />
                         ) : (
-                            <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
-                                <path d="M3 8.5L6.5 12L13 4" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
+                            <div className="tb-dot-complete" />
                         )}
                     </div>
 
-                    {/* Mode badge */}
-                    <span className="tb-header-mode">{modeInfo.icon}</span>
-
-                    {/* Title */}
                     <span className="tb-header-title">
                         {isActive
                             ? activeStep
@@ -157,12 +172,6 @@ export function ThinkingBlock({ state }: ThinkingBlockProps) {
                                 : 'Thinking…'
                             : `Reasoned through ${completedSteps} step${completedSteps !== 1 ? 's' : ''}`}
                     </span>
-
-                    {wasEscalated && (
-                        <span className="tb-badge tb-badge--escalated">
-                            ⬆ Escalated
-                        </span>
-                    )}
                 </div>
 
                 <div className="tb-header-right">
@@ -190,30 +199,13 @@ export function ThinkingBlock({ state }: ThinkingBlockProps) {
                         />
                     </svg>
                 </div>
-            </button>
+            </button >
 
             {/* ═══ BODY ══════════════════════════════════════════ */}
-            <div className={`tb-body ${isOpen ? 'open' : ''}`}>
+            < div className={`tb-body ${isOpen ? 'open' : ''}`
+            }>
                 <div className="tb-body-inner">
-                    {/* ── Classification Tags ────────────────────── */}
-                    {classification && (
-                        <div className="tb-tags">
-                            <span className="tb-tag tb-tag--domain">
-                                {classification.domain}
-                            </span>
-                            <span className={`tb-tag tb-tag--mode ${isUltraDeep ? 'ultra' : ''}`}>
-                                {modeInfo.label}
-                            </span>
-                            {classification.reasoning_modes.map((rm) => (
-                                <span key={rm} className="tb-tag tb-tag--reasoning">
-                                    {rm}
-                                </span>
-                            ))}
-                            <span className={`tb-tag tb-tag--complexity ${classification.complexity}`}>
-                                {classification.complexity} complexity
-                            </span>
-                        </div>
-                    )}
+
 
                     {/* ── Sequential Steps Timeline ──────────────── */}
                     {sequentialSteps.length > 0 && (
@@ -233,17 +225,31 @@ export function ThinkingBlock({ state }: ThinkingBlockProps) {
 
                                     {/* Content */}
                                     <div className="tb-step-body">
-                                        <div className="tb-step-header">
+                                        <div
+                                            className="tb-step-header"
+                                            onClick={() => toggleStep(`${step.layer}-${i}`)}
+                                            style={{ cursor: step.content ? 'pointer' : 'default' }}
+                                        >
                                             <span className="tb-step-label">
                                                 {refineLabel(step.layer, step.label)}
                                             </span>
-                                            {step.status === 'complete' && step.completedAt && (
-                                                <span className="tb-step-duration">
-                                                    {formatDuration(step.completedAt - step.startedAt)}
-                                                </span>
-                                            )}
+                                            <div className="tb-step-header-right">
+                                                {step.status === 'complete' && step.completedAt && (
+                                                    <span className="tb-step-duration">
+                                                        {formatDuration(step.completedAt - step.startedAt)}
+                                                    </span>
+                                                )}
+                                                {step.content && (
+                                                    <svg
+                                                        className={`tb-step-chevron ${collapsedSteps.has(`${step.layer}-${i}`) ? '' : 'open'}`}
+                                                        width="10" height="10" viewBox="0 0 16 16" fill="none"
+                                                    >
+                                                        <path d="M4 6L8 10L12 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                                                    </svg>
+                                                )}
+                                            </div>
                                         </div>
-                                        {step.content && (
+                                        {step.content && !collapsedSteps.has(`${step.layer}-${i}`) && (
                                             <div className="tb-step-content">
                                                 {step.content}
                                             </div>
@@ -257,29 +263,28 @@ export function ThinkingBlock({ state }: ThinkingBlockProps) {
                     {/* ── Parallel Solvers (Ultra-Deep) ──────────── */}
                     {parallelSteps.length > 0 && (
                         <div className="tb-parallel">
-                            <div className="tb-parallel-header">
-                                <span className="tb-parallel-icon">⚡</span>
-                                <span className="tb-parallel-title">Parallel Reasoning Paths</span>
-                            </div>
                             <div className="tb-parallel-grid">
                                 {parallelSteps.map((solver, i) => (
                                     <div
                                         key={`solver-${i}`}
                                         className={`tb-solver-card tb-solver-card--${solver.status}`}
                                     >
-                                        <div className="tb-solver-header">
-                                            <span className={`tb-solver-dot solver-${i}`} />
+                                        <div
+                                            className="tb-solver-header"
+                                            onClick={() => toggleStep(`solver-${i}`)}
+                                            style={{ cursor: solver.content ? 'pointer' : 'default' }}
+                                        >
                                             <span className="tb-solver-label">{solver.label}</span>
-                                            {solver.status === 'active' && (
-                                                <span className="tb-solver-live">LIVE</span>
-                                            )}
-                                            {solver.status === 'complete' && (
-                                                <svg className="tb-solver-check" width="12" height="12" viewBox="0 0 16 16" fill="none">
-                                                    <path d="M3 8.5L6.5 12L13 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                            {solver.content && (
+                                                <svg
+                                                    className={`tb-step-chevron ${collapsedSteps.has(`solver-${i}`) ? '' : 'open'}`}
+                                                    width="10" height="10" viewBox="0 0 16 16" fill="none"
+                                                >
+                                                    <path d="M4 6L8 10L12 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                                                 </svg>
                                             )}
                                         </div>
-                                        {solver.content && (
+                                        {solver.content && !collapsedSteps.has(`solver-${i}`) && (
                                             <div className="tb-solver-content">{solver.content}</div>
                                         )}
                                     </div>
@@ -300,17 +305,6 @@ export function ThinkingBlock({ state }: ThinkingBlockProps) {
                                     {Math.round(state.confidence)}%
                                 </span>
                             </div>
-                            <div className="tb-confidence-track">
-                                <div
-                                    className="tb-confidence-fill"
-                                    style={{
-                                        width: `${Math.min(state.confidence, 100)}%`,
-                                        background: `linear-gradient(90deg, #ef4444 0%, #f97316 25%, #eab308 50%, #22c55e 75%, ${confidenceColor(state.confidence)} 100%)`,
-                                    }}
-                                />
-                                {/* Threshold marker at 70% */}
-                                <div className="tb-confidence-threshold" style={{ left: '70%' }} />
-                            </div>
                         </div>
                     )}
 
@@ -318,34 +312,20 @@ export function ThinkingBlock({ state }: ThinkingBlockProps) {
                     {state.sources && state.sources.length > 0 && (
                         <div className="tb-sources">
                             <div className="tb-sources-label">
-                                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" style={{ marginRight: 4 }}>
-                                    <path d="M8 1v14M1 8h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                                </svg>
                                 {state.sources.length} Source{state.sources.length !== 1 ? 's' : ''} Referenced
                             </div>
-                            <div className="tb-sources-grid">
-                                {state.sources.map((src, i) => {
-                                    let domain = src.url;
-                                    try {
-                                        domain = new URL(src.url).hostname.replace('www.', '');
-                                    } catch { /* malformed URL — use raw */ }
-                                    return (
-                                        <a
-                                            key={i}
-                                            href={src.url}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="tb-source-chip"
-                                            title={src.title}
-                                        >
-                                            <span className="tb-source-index">{i + 1}</span>
-                                            <div className="tb-source-info">
-                                                <span className="tb-source-title">{src.title || domain}</span>
-                                                <span className="tb-source-domain">{domain}</span>
-                                            </div>
-                                        </a>
-                                    );
-                                })}
+                            <div className="tb-sources-list">
+                                {state.sources.map((src, i) => (
+                                    <a
+                                        key={i}
+                                        href={src.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="tb-source-link"
+                                    >
+                                        [{i + 1}] {src.title || src.url}
+                                    </a>
+                                ))}
                             </div>
                         </div>
                     )}
@@ -357,10 +337,6 @@ export function ThinkingBlock({ state }: ThinkingBlockProps) {
                                 {state.assumptions && state.assumptions.length > 0 && (
                                     <div className="tb-meta-group">
                                         <div className="tb-meta-label">
-                                            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" style={{ marginRight: 4 }}>
-                                                <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.5" />
-                                                <path d="M8 5v3M8 10.5v.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                                            </svg>
                                             Assumptions Made
                                         </div>
                                         <ul className="tb-meta-list">
@@ -373,10 +349,6 @@ export function ThinkingBlock({ state }: ThinkingBlockProps) {
                                 {state.uncertaintyNotes && state.uncertaintyNotes.length > 0 && (
                                     <div className="tb-meta-group tb-meta-group--uncertainty">
                                         <div className="tb-meta-label">
-                                            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" style={{ marginRight: 4 }}>
-                                                <path d="M6.5 5.5C6.5 4.67 7.17 4 8 4s1.5.67 1.5 1.5c0 .83-.75 1.25-1.5 2M8 10.5v.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                                                <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.5" />
-                                            </svg>
                                             Uncertainty Notes
                                         </div>
                                         <ul className="tb-meta-list">
@@ -400,7 +372,7 @@ export function ThinkingBlock({ state }: ThinkingBlockProps) {
                         </div>
                     )}
                 </div>
-            </div>
-        </div>
+            </div >
+        </div >
     );
 }

@@ -61,6 +61,12 @@ export function useDeepEx(): UseDeepExReturn {
 
     const clientRef = useRef<DeepExStreamClient | null>(null);
     const [isStreaming, setIsStreaming] = useState(false);
+    const currentConvIdRef = useRef<string | null>(null);
+
+    // Sync ref with current conversation
+    useEffect(() => {
+        currentConvIdRef.current = currentConversation?.id || null;
+    }, [currentConversation]);
 
     // ── Initialize SSE client ─────────────────────────────────
     useEffect(() => {
@@ -91,6 +97,7 @@ export function useDeepEx(): UseDeepExReturn {
         // The DB row is created lazily on the first sendMessage.
         setCurrentConversation(null);
         setMessages([]);
+        currentConvIdRef.current = null;
         return '';
     }, []);
 
@@ -111,6 +118,7 @@ export function useDeepEx(): UseDeepExReturn {
         if (error) throw error;
         setConversations((prev) => [data, ...prev]);
         setCurrentConversation(data);
+        currentConvIdRef.current = data.id;
         return data.id;
     }, [currentConversation]);
 
@@ -123,6 +131,7 @@ export function useDeepEx(): UseDeepExReturn {
 
         if (conv) {
             setCurrentConversation(conv);
+            currentConvIdRef.current = conv.id;
 
             const { data: msgs } = await supabase
                 .from('messages')
@@ -145,7 +154,7 @@ export function useDeepEx(): UseDeepExReturn {
 
     // ── Messaging ──────────────────────────────────────────────
     const sendMessage = useCallback(
-        async (content: string, modeOverride?: ReasoningMode, imageUrl?: string) => {
+        async (content: string, modeOverride?: ReasoningMode, imageUrl?: string, modelOverride?: string) => {
             if (!clientRef.current) return;
 
             // Ensure a persisted conversation exists (lazy create)
@@ -168,11 +177,13 @@ export function useDeepEx(): UseDeepExReturn {
                 total_thinking_time_ms: null,
                 created_at: new Date().toISOString(),
             };
-            setMessages((prev) => [...prev, optimisticUserMsg]);
+            if (currentConvIdRef.current === convId) {
+                setMessages((prev) => [...prev, optimisticUserMsg]);
+            }
 
             // Start streaming
             setIsStreaming(true);
-            await clientRef.current.streamMessage(convId, content, modeOverride, imageUrl);
+            await clientRef.current.streamMessage(convId, content, modeOverride, imageUrl, modelOverride);
 
             // After stream completes, reload messages to get persisted versions.
             // In ultra-deep mode, the DB update may lag behind the SSE close,
@@ -220,7 +231,10 @@ export function useDeepEx(): UseDeepExReturn {
                         msgs[msgIndex].content = finalState.finalContent;
                     }
                 }
-                setMessages(msgs);
+
+                if (currentConvIdRef.current === convId) {
+                    setMessages(msgs);
+                }
             }
 
             setIsStreaming(false);

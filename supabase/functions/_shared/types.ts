@@ -105,6 +105,7 @@ export interface ChatRequest {
     message: string;
     image_url?: string;
     mode_override?: ReasoningMode;
+    model_override?: string;
 }
 
 // ── Reasoning Artifacts ──────────────────────────────────────

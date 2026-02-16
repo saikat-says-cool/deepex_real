@@ -5,6 +5,32 @@ import { MessageBubble } from './MessageBubble';
 import { supabase } from '../lib/supabase';
 import type { ReasoningMode } from '../types';
 
+const Logo = ({ className, size = 24 }: { className?: string; size?: number }) => (
+    <svg
+        width={size}
+        height={size}
+        viewBox="0 0 100 100"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        className={className}
+    >
+        {/* Left Diamond */}
+        <path d="M35 20L65 50L35 80L5 50L35 20Z" stroke="currentColor" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" />
+        {/* Right Diamond */}
+        <path d="M65 20L95 50L65 80L35 50L65 20Z" stroke="currentColor" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" />
+        {/* Interlocking occlusion segment */}
+        <path d="M50 35L65 20L80 35" stroke="currentColor" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+);
+
+const ShootingStars = ({ active }: { active: boolean }) => (
+    <div className={`shooting-stars-background ${active ? '' : 'is-stopped'}`}>
+        {[...Array(6)].map((_, i) => (
+            <div key={i} className={`shooting-star star-${i}`} />
+        ))}
+    </div>
+);
+
 const HERO_TAGLINES = [
     'Think Harder. Push Limits.',
     'Reason. Challenge. Discover.',
@@ -23,12 +49,51 @@ const HERO_TAGLINES = [
     'Depth over speed. Always.',
 ];
 
-const MODES: { value: ReasoningMode | 'auto'; label: string; description: string }[] = [
-    { value: 'auto', label: 'Auto', description: 'DeepEx picks the best depth for you.' },
+const MODES: { value: ReasoningMode; label: string; description: string }[] = [
     { value: 'instant', label: 'Instant', description: 'Fast and direct for simple tasks.' },
     { value: 'deep', label: 'Deep', description: 'Detailed reasoning with verification.' },
     { value: 'ultra_deep', label: 'Ultra-Deep', description: 'Parallel solver logic for complex problems.' },
 ];
+
+// ── Frontier Model Mapping (Marketing Layer) ────────────────
+interface FrontierModel {
+    id: string;
+    label: string;
+    provider: string;
+    providerColor: string;
+    longcatModel: string;
+    tier: 'speed' | 'standard' | 'reasoning' | 'ultra';
+    description: string;
+}
+
+const FRONTIER_MODELS: FrontierModel[] = [
+    // Speed Tier → LongCat-Flash-Lite
+    { id: 'gpt-4o-mini', label: 'GPT-4o Mini', provider: 'OpenAI', providerColor: '#10a37f', longcatModel: 'LongCat-Flash-Lite', tier: 'speed', description: 'Fast and efficient' },
+    { id: 'claude-3.5-haiku', label: 'Claude 3.5 Haiku', provider: 'Anthropic', providerColor: '#d97706', longcatModel: 'LongCat-Flash-Lite', tier: 'speed', description: 'Quick responses' },
+    { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', provider: 'Google', providerColor: '#4285f4', longcatModel: 'LongCat-Flash-Lite', tier: 'speed', description: 'Rapid processing' },
+    // Standard Tier → LongCat-Flash-Chat
+    { id: 'gpt-4.5', label: 'GPT-4.5', provider: 'OpenAI', providerColor: '#10a37f', longcatModel: 'LongCat-Flash-Chat', tier: 'standard', description: 'Strong general assistant' },
+    { id: 'claude-4.5-sonnet-std', label: 'Claude 4.5 Sonnet', provider: 'Anthropic', providerColor: '#d97706', longcatModel: 'LongCat-Flash-Chat', tier: 'standard', description: 'Balanced reasoning' },
+    { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', provider: 'Google', providerColor: '#4285f4', longcatModel: 'LongCat-Flash-Chat', tier: 'standard', description: 'Professional grade' },
+    // Reasoning Tier → LongCat-Flash-Thinking
+    { id: 'gpt-5.1', label: 'GPT-5.1', provider: 'OpenAI', providerColor: '#10a37f', longcatModel: 'LongCat-Flash-Thinking', tier: 'reasoning', description: 'Deep chain-of-thought' },
+    { id: 'claude-opus-4.5', label: 'Claude Opus 4.5', provider: 'Anthropic', providerColor: '#d97706', longcatModel: 'LongCat-Flash-Thinking', tier: 'reasoning', description: 'Extended thinking mode' },
+    { id: 'deepseek-v1', label: 'DeepSeek V1', provider: 'DeepSeek', providerColor: '#00b4d8', longcatModel: 'LongCat-Flash-Thinking', tier: 'reasoning', description: 'Math & proof specialist' },
+    // Ultra Tier → LongCat-Flash-Thinking-2601
+    { id: 'gpt-o3', label: 'GPT-o3', provider: 'OpenAI', providerColor: '#10a37f', longcatModel: 'LongCat-Flash-Thinking-2601', tier: 'ultra', description: 'Maximum deliberation' },
+    { id: 'claude-opus-4.6', label: 'Claude Opus 4.6', provider: 'Anthropic', providerColor: '#d97706', longcatModel: 'LongCat-Flash-Thinking-2601', tier: 'ultra', description: 'Ultimate reasoning' },
+    { id: 'gemini-3-pro', label: 'Gemini 3 Pro', provider: 'Google', providerColor: '#4285f4', longcatModel: 'LongCat-Flash-Thinking-2601', tier: 'ultra', description: 'Peak performance' },
+    { id: 'deepseek-r1-ultra', label: 'DeepSeek R1', provider: 'DeepSeek', providerColor: '#00b4d8', longcatModel: 'LongCat-Flash-Thinking-2601', tier: 'ultra', description: 'Maximum reasoning scale' },
+];
+
+const TIER_LABELS: Record<string, string> = {
+    speed: 'Speed',
+    standard: 'Standard',
+    reasoning: 'Reasoning',
+    ultra: 'Ultra',
+};
+
+const TIER_ORDER: FrontierModel['tier'][] = ['speed', 'standard', 'reasoning', 'ultra'];
 
 export function ChatInterface() {
     const {
@@ -47,7 +112,8 @@ export function ChatInterface() {
     } = useDeepEx();
 
     const [input, setInput] = useState('');
-    const [chatDepth, setChatDepth] = useState<ReasoningMode | 'auto'>('auto');
+    const [chatDepth, setChatDepth] = useState<ReasoningMode>('deep');
+    const [selectedModelId, setSelectedModelId] = useState('gpt-o3');
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [isInChat, setIsInChat] = useState(false);
 
@@ -55,15 +121,11 @@ export function ChatInterface() {
     const [taglineIndex, setTaglineIndex] = useState(() => Math.floor(Math.random() * HERO_TAGLINES.length));
     const tagline = HERO_TAGLINES[taglineIndex];
 
+    const [autoScrollEnabled, setAutoScrollEnabled] = useState(true);
+    const messagesAreaRef = useRef<HTMLDivElement>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const chatInputRef = useRef<HTMLTextAreaElement>(null);
     const heroInputRef = useRef<HTMLTextAreaElement>(null);
-    const fileInputRef = useRef<HTMLInputElement>(null);
-
-    // Image upload state
-    const [pendingImage, setPendingImage] = useState<File | null>(null);
-    const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
-    const [isUploadingImage, setIsUploadingImage] = useState(false);
 
     // Profile popover
     const [showProfile, setShowProfile] = useState(false);
@@ -75,6 +137,11 @@ export function ChatInterface() {
     // Custom Dropdown State
     const [showModeDropdown, setShowModeDropdown] = useState(false);
     const modeDropdownRef = useRef<HTMLDivElement>(null);
+    const [showModelDropdown, setShowModelDropdown] = useState(false);
+    const modelDropdownRef = useRef<HTMLDivElement>(null);
+
+    // Derived: currently selected frontier model
+    const selectedFrontier = FRONTIER_MODELS.find(m => m.id === selectedModelId)!;
 
     useEffect(() => {
         supabase.auth.getUser().then(({ data }) => {
@@ -90,18 +157,19 @@ export function ChatInterface() {
     // Close popovers on outside click
     useEffect(() => {
         const handleClick = (e: MouseEvent) => {
-            // Profile popover
             if (showProfile && profileRef.current && !profileRef.current.contains(e.target as Node)) {
                 setShowProfile(false);
             }
-            // Mode dropdown
             if (showModeDropdown && modeDropdownRef.current && !modeDropdownRef.current.contains(e.target as Node)) {
                 setShowModeDropdown(false);
+            }
+            if (showModelDropdown && modelDropdownRef.current && !modelDropdownRef.current.contains(e.target as Node)) {
+                setShowModelDropdown(false);
             }
         };
         document.addEventListener('mousedown', handleClick);
         return () => document.removeEventListener('mousedown', handleClick);
-    }, [showProfile, showModeDropdown]);
+    }, [showProfile, showModeDropdown, showModelDropdown]);
 
     const handleSignOut = async () => {
         await supabase.auth.signOut();
@@ -111,8 +179,21 @@ export function ChatInterface() {
 
     // ── Auto-scroll on new messages ─────────────────────────────
     useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [messages, streamState]);
+        if (autoScrollEnabled) {
+            // Use 'auto' instead of 'smooth' when streaming to prevent the "pulling" sensation
+            // that competes with manual user scroll actions.
+            messagesEndRef.current?.scrollIntoView({ behavior: isStreaming ? 'auto' : 'smooth' });
+        }
+    }, [messages, streamState, autoScrollEnabled, isStreaming]);
+
+    const handleScroll = () => {
+        if (!messagesAreaRef.current) return;
+        const { scrollTop, scrollHeight, clientHeight } = messagesAreaRef.current;
+        // If we are within 20px of the bottom, enable auto-scroll.
+        // Smaller threshold (20 instead of 100) makes it easier for the user to "break out" of auto-scroll.
+        const atBottom = scrollHeight - scrollTop - clientHeight < 20;
+        setAutoScrollEnabled(atBottom);
+    };
 
     // ── If a conversation is selected, enter chat mode ──────────
     useEffect(() => {
@@ -129,131 +210,19 @@ export function ChatInterface() {
     }, [isInChat]);
 
     // ── Image handling ──────────────────────────────────────────
-    const processImageFile = useCallback((file: File) => {
-        // Validate file type
-        const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-        if (!allowedTypes.includes(file.type)) {
-            alert('Please select a valid image file (JPEG, PNG, GIF, or WebP)');
-            return;
-        }
 
-        // Validate file size (max 10MB)
-        if (file.size > 10 * 1024 * 1024) {
-            alert('Image must be under 10MB');
-            return;
-        }
-
-        setPendingImage(file);
-        setImagePreviewUrl(URL.createObjectURL(file));
-    }, []);
-
-    const handleImageSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        processImageFile(file);
-        // Reset the file input so the same file can be selected again
-        if (fileInputRef.current) {
-            fileInputRef.current.value = '';
-        }
-    }, [processImageFile]);
-
-    const removePendingImage = useCallback(() => {
-        if (imagePreviewUrl) {
-            URL.revokeObjectURL(imagePreviewUrl);
-        }
-        setPendingImage(null);
-        setImagePreviewUrl(null);
-    }, [imagePreviewUrl]);
-
-    const uploadImageToStorage = useCallback(async (file: File): Promise<string> => {
-        const fileExt = file.name.split('.').pop() || 'jpg';
-        const fileName = `${crypto.randomUUID()}.${fileExt}`;
-        const filePath = `chat-images/${fileName}`;
-
-        const { error } = await supabase.storage
-            .from('message-attachments')
-            .upload(filePath, file, {
-                contentType: file.type,
-                upsert: false,
-            });
-
-        if (error) throw new Error(`Upload failed: ${error.message}`);
-
-        const { data: urlData } = supabase.storage
-            .from('message-attachments')
-            .getPublicUrl(filePath);
-
-        return urlData.publicUrl;
-    }, []);
 
     // ── Paste handler (Ctrl+V with image in clipboard) ──────────
-    const handlePaste = useCallback((e: React.ClipboardEvent) => {
-        const items = e.clipboardData?.items;
-        if (!items) return;
 
-        for (let i = 0; i < items.length; i++) {
-            const item = items[i];
-            if (item.type.startsWith('image/')) {
-                e.preventDefault();
-                const file = item.getAsFile();
-                if (file) {
-                    // Create a file with a proper name since clipboard images don't have one
-                    const ext = item.type.split('/')[1] || 'png';
-                    const namedFile = new File([file], `pasted-image-${Date.now()}.${ext}`, { type: item.type });
-                    processImageFile(namedFile);
-                }
-                return;
-            }
-        }
-    }, [processImageFile]);
 
     // ── Drag-and-drop state and handlers ────────────────────────
-    const [isDragOver, setIsDragOver] = useState(false);
-    const dragCounterRef = useRef(0);
 
-    const handleDragEnter = useCallback((e: React.DragEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        dragCounterRef.current++;
-        if (e.dataTransfer.types.includes('Files')) {
-            setIsDragOver(true);
-        }
-    }, []);
-
-    const handleDragLeave = useCallback((e: React.DragEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        dragCounterRef.current--;
-        if (dragCounterRef.current === 0) {
-            setIsDragOver(false);
-        }
-    }, []);
-
-    const handleDragOver = useCallback((e: React.DragEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-    }, []);
-
-    const handleDrop = useCallback((e: React.DragEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setIsDragOver(false);
-        dragCounterRef.current = 0;
-
-        const files = e.dataTransfer.files;
-        if (files.length > 0) {
-            const file = files[0];
-            if (file.type.startsWith('image/')) {
-                processImageFile(file);
-            }
-        }
-    }, [processImageFile]);
 
     // ── Handle send (both hero and chat) ────────────────────────
     const handleSend = useCallback(async (e?: FormEvent) => {
         e?.preventDefault();
         const trimmed = input.trim();
-        if ((!trimmed && !pendingImage) || isStreaming) return;
+        if (!trimmed || isStreaming) return;
 
         const isFirstMessage = !isInChat;
 
@@ -271,31 +240,15 @@ export function ChatInterface() {
             heroInputRef.current.style.height = 'auto';
         }
 
-        // Upload image if present
-        let imageUrl: string | undefined;
-        if (pendingImage) {
-            setIsUploadingImage(true);
-            try {
-                imageUrl = await uploadImageToStorage(pendingImage);
-            } catch (err) {
-                console.error('Image upload failed:', err);
-                alert('Failed to upload image. Please try again.');
-                setIsUploadingImage(false);
-                return;
-            }
-            setIsUploadingImage(false);
-            removePendingImage();
-        }
-
-        const finalMode = chatDepth === 'auto' ? undefined : chatDepth;
-        const messageText = trimmed || 'What is in this image?';
-        const convId = await sendMessage(messageText, finalMode, imageUrl);
+        const frontier = FRONTIER_MODELS.find(m => m.id === selectedModelId);
+        const messageText = trimmed;
+        const convId = await sendMessage(messageText, chatDepth, undefined, frontier?.longcatModel);
 
         // Generate chat title after first message
         if (isFirstMessage && convId) {
-            generateChatTitle(trimmed || 'Image Analysis', convId).catch(() => { });
+            generateChatTitle(trimmed, convId).catch(() => { });
         }
-    }, [input, pendingImage, isStreaming, isInChat, chatDepth, sendMessage, generateChatTitle, uploadImageToStorage, removePendingImage]);
+    }, [input, isStreaming, isInChat, chatDepth, selectedModelId, sendMessage, generateChatTitle]);
 
     // ── Key handlers ────────────────────────────────────────────
     const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -332,13 +285,7 @@ export function ChatInterface() {
     return (
         <div className="app-layout">
             {/* Hidden file input for image attachment */}
-            <input
-                type="file"
-                ref={fileInputRef}
-                accept="image/jpeg,image/png,image/gif,image/webp"
-                onChange={handleImageSelect}
-                style={{ display: 'none' }}
-            />
+
 
             {/* ── Sidebar Overlay ──────────────────────────────────── */}
             <div
@@ -351,7 +298,7 @@ export function ChatInterface() {
                 <div className="sidebar-header">
                     <span className="sidebar-title">DeepEx</span>
                     <button className="sidebar-close" onClick={() => setSidebarOpen(false)}>
-                        ✕
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                     </button>
                 </div>
 
@@ -385,10 +332,15 @@ export function ChatInterface() {
                                 className="conversation-delete"
                                 onClick={(e) => {
                                     e.stopPropagation();
-                                    deleteConversation(c.id);
+                                    deleteConversation(c.id).then(() => {
+                                        // If no conversations left, trigger new chat
+                                        if (conversations.length <= 1) {
+                                            handleNewChat();
+                                        }
+                                    });
                                 }}
                             >
-                                ✕
+                                X
                             </button>
                         </div>
                     ))}
@@ -442,14 +394,17 @@ export function ChatInterface() {
             {/* ── Top Header ───────────────────────────────────────── */}
             <header className="top-header">
                 <div className="top-header-left">
-                    <button className="hamburger-btn" onClick={() => setSidebarOpen(true)}>
-                        ☰
+                    <button className="hamburger-btn" onClick={() => setSidebarOpen(true)} title="Open sidebar">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
                     </button>
-                    <span className="logo-text">DeepEx 1.0</span>
+                    <div className="header-logo-container">
+                        <Logo className="header-logo" size={28} />
+                        <span className="logo-text">DeepEx</span>
+                    </div>
                 </div>
 
                 <div className="top-header-center">
-                    {/* Mode toggle removed */}
+                    {/* Model selector moved to chat bar */}
                 </div>
 
                 <div className="top-header-right">
@@ -458,27 +413,8 @@ export function ChatInterface() {
             </header>
 
             {/* ── Main Content ─────────────────────────────────────── */}
-            <div
-                className={`main-content ${isDragOver ? 'drag-over' : ''}`}
-                onDragEnter={handleDragEnter}
-                onDragLeave={handleDragLeave}
-                onDragOver={handleDragOver}
-                onDrop={handleDrop}
-            >
-                {/* Drag overlay */}
-                {isDragOver && (
-                    <div className="drag-overlay">
-                        <div className="drag-overlay-content">
-                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                                <circle cx="8.5" cy="8.5" r="1.5" />
-                                <polyline points="21 15 16 10 5 21" />
-                            </svg>
-                            <span>Drop image here</span>
-                            <span className="drag-overlay-hint">JPEG, PNG, GIF, or WebP • Max 10MB</span>
-                        </div>
-                    </div>
-                )}
+            <div className={`main-content`}>
+
                 {!isInChat ? (
                     /* ══ HERO LANDING STATE ══════════════════════════════ */
                     <div className="hero-landing">
@@ -486,7 +422,7 @@ export function ChatInterface() {
 
                         <div className="hero-input-wrapper">
                             <div className="hero-input-container">
-                                <div className="mode-dropdown-container" ref={modeDropdownRef}>
+                                <div className="mode-dropdown-container is-hero" ref={modeDropdownRef}>
                                     <button
                                         className={`mode-dropdown-trigger ${showModeDropdown ? 'active' : ''}`}
                                         onClick={() => setShowModeDropdown(!showModeDropdown)}
@@ -522,24 +458,53 @@ export function ChatInterface() {
                                     value={input}
                                     onChange={handleTextareaInput}
                                     onKeyDown={handleKeyDown}
-                                    onPaste={handlePaste}
                                     rows={1}
                                     autoFocus
                                 />
-                                <button
-                                    className="image-attach-btn"
-                                    onClick={() => fileInputRef.current?.click()}
-                                    title="Attach Image"
-                                    type="button"
-                                >
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-                                    </svg>
-                                </button>
+
+                                <div className="model-selector-container in-bar is-hero" ref={modelDropdownRef}>
+                                    <button
+                                        className={`model-selector-trigger ${showModelDropdown ? 'active' : ''}`}
+                                        onClick={() => setShowModelDropdown(!showModelDropdown)}
+                                    >
+                                        <span className="model-provider-dot" style={{ background: selectedFrontier?.providerColor }} />
+                                        <span className="model-selector-name">{selectedFrontier?.label}</span>
+                                        <span className="model-chevron">▾</span>
+                                    </button>
+
+                                    {showModelDropdown && (
+                                        <div className="model-selector-dropdown">
+                                            <div className="model-dropdown-header">Select Model</div>
+                                            {TIER_ORDER.map(tier => (
+                                                <div key={tier} className="model-tier-group">
+                                                    <div className="model-tier-label">{TIER_LABELS[tier]}</div>
+                                                    {FRONTIER_MODELS.filter(m => m.tier === tier).map(model => (
+                                                        <div
+                                                            key={model.id}
+                                                            className={`model-option-item ${selectedModelId === model.id ? 'selected' : ''}`}
+                                                            onClick={() => {
+                                                                setSelectedModelId(model.id);
+                                                                setShowModelDropdown(false);
+                                                            }}
+                                                        >
+                                                            <span className="model-provider-dot" style={{ background: model.providerColor }} />
+                                                            <div className="model-option-info">
+                                                                <span className="model-option-name">{model.label}</span>
+                                                                <span className="model-option-desc">{model.description}</span>
+                                                            </div>
+                                                            <span className="model-option-provider">{model.provider}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
                                 <button
                                     className="hero-send-btn"
                                     onClick={() => handleSend()}
-                                    disabled={!input.trim() && !pendingImage}
+                                    disabled={!input.trim()}
                                     title="Send Message"
                                 >
                                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -548,46 +513,32 @@ export function ChatInterface() {
                                     </svg>
                                 </button>
                             </div>
-                            {/* Image Preview */}
-                            {imagePreviewUrl && (
-                                <div className="image-preview-bar">
-                                    <div className="image-preview-item">
-                                        <img src={imagePreviewUrl} alt="Preview" className="image-preview-thumb" />
-                                        <button className="image-preview-remove" onClick={removePendingImage} title="Remove image">
-                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
-                                                <line x1="18" y1="6" x2="6" y2="18" />
-                                                <line x1="6" y1="6" x2="18" y2="18" />
-                                            </svg>
-                                        </button>
-                                        <span className="image-preview-label">{pendingImage?.name}</span>
-                                    </div>
-                                    {isUploadingImage && (
-                                        <div className="image-upload-indicator">
-                                            <div className="tb-spinner-ring" style={{ width: 14, height: 14 }} />
-                                            <span>Uploading…</span>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
+
                         </div>
-                        <div className="hero-branding">
-                            Built by <a href="https://artificialyze.com" target="_blank" rel="noopener noreferrer">Artificialyze</a>
-                        </div>
+
                     </div>
                 ) : (
                     /* ══ CHAT VIEW STATE ════════════════════════════════ */
                     <div className="chat-view">
                         {/* Messages */}
-                        <div className="messages-area">
+                        <div className="messages-area" ref={messagesAreaRef} onScroll={handleScroll}>
                             <div className="messages-container">
                                 {messages.map((msg) => (
                                     <MessageBubble key={msg.id} message={msg} loadThoughtLogs={loadThoughtLogs} />
                                 ))}
 
                                 {/* Live Thinking Block */}
-                                {isStreaming && streamState && (
+                                {isStreaming && streamState && streamState.conversationId === currentConversation?.id && (
                                     <div className="message message-assistant">
                                         <ThinkingBlock state={streamState} />
+
+                                        {/* Instant Mode Loader - Show while waiting for first content */}
+                                        {streamState.mode === 'instant' && !streamState.finalContent && (
+                                            <div className="instant-loader-container">
+                                                <div className="tb-rotating-square" />
+                                                <span className="instant-loader-text">Gathering response…</span>
+                                            </div>
+                                        )}
 
                                         {/* Streaming Final Answer */}
                                         {streamState.finalContent && (
@@ -600,7 +551,7 @@ export function ChatInterface() {
                                         {/* Error Display */}
                                         {streamState.error && (
                                             <div className="stream-error-banner">
-                                                <span className="stream-error-icon">⚠️</span>
+                                                <span className="stream-error-icon">!</span>
                                                 <span>{streamState.error}</span>
                                             </div>
                                         )}
@@ -646,26 +597,55 @@ export function ChatInterface() {
                                         )}
                                     </div>
                                     <div className="chat-input-wrapper">
-                                        <button
-                                            className="image-attach-btn chat-attach"
-                                            onClick={() => fileInputRef.current?.click()}
-                                            title="Attach Image"
-                                            type="button"
-                                        >
-                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-                                            </svg>
-                                        </button>
                                         <textarea
                                             ref={chatInputRef}
                                             className="chat-input"
-                                            placeholder={pendingImage ? 'Ask about this image...' : 'Ask DeepEx anything...'}
+                                            placeholder="Ask DeepEx anything..."
                                             value={input}
                                             onChange={handleTextareaInput}
                                             onKeyDown={handleKeyDown}
-                                            onPaste={handlePaste}
                                             rows={1}
                                         />
+
+                                        <div className="model-selector-container in-bar" ref={modelDropdownRef}>
+                                            <button
+                                                className={`model-selector-trigger ${showModelDropdown ? 'active' : ''}`}
+                                                onClick={() => setShowModelDropdown(!showModelDropdown)}
+                                            >
+                                                <span className="model-provider-dot" style={{ background: selectedFrontier?.providerColor }} />
+                                                <span className="model-selector-name">{selectedFrontier?.label}</span>
+                                                <span className="model-chevron">▾</span>
+                                            </button>
+
+                                            {showModelDropdown && (
+                                                <div className="model-selector-dropdown">
+                                                    <div className="model-dropdown-header">Select Model</div>
+                                                    {TIER_ORDER.map(tier => (
+                                                        <div key={tier} className="model-tier-group">
+                                                            <div className="model-tier-label">{TIER_LABELS[tier]}</div>
+                                                            {FRONTIER_MODELS.filter(m => m.tier === tier).map(model => (
+                                                                <div
+                                                                    key={model.id}
+                                                                    className={`model-option-item ${selectedModelId === model.id ? 'selected' : ''}`}
+                                                                    onClick={() => {
+                                                                        setSelectedModelId(model.id);
+                                                                        setShowModelDropdown(false);
+                                                                    }}
+                                                                >
+                                                                    <span className="model-provider-dot" style={{ background: model.providerColor }} />
+                                                                    <div className="model-option-info">
+                                                                        <span className="model-option-name">{model.label}</span>
+                                                                        <span className="model-option-desc">{model.description}</span>
+                                                                    </div>
+                                                                    <span className="model-option-provider">{model.provider}</span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+
                                         {isStreaming ? (
                                             <button className="stop-btn-square" onClick={stopStream} title="Stop generation">
                                                 <div className="stop-icon"></div>
@@ -674,39 +654,22 @@ export function ChatInterface() {
                                             <button
                                                 className="chat-send-btn"
                                                 onClick={() => handleSend()}
-                                                disabled={!input.trim() && !pendingImage}
+                                                disabled={!input.trim()}
                                             >
                                                 →
                                             </button>
                                         )}
                                     </div>
-                                    {/* Image Preview in Chat */}
-                                    {imagePreviewUrl && (
-                                        <div className="image-preview-bar chat-preview">
-                                            <div className="image-preview-item">
-                                                <img src={imagePreviewUrl} alt="Preview" className="image-preview-thumb" />
-                                                <button className="image-preview-remove" onClick={removePendingImage} title="Remove image">
-                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
-                                                        <line x1="18" y1="6" x2="6" y2="18" />
-                                                        <line x1="6" y1="6" x2="18" y2="18" />
-                                                    </svg>
-                                                </button>
-                                                <span className="image-preview-label">{pendingImage?.name}</span>
-                                            </div>
-                                            {isUploadingImage && (
-                                                <div className="image-upload-indicator">
-                                                    <div className="tb-spinner-ring" style={{ width: 14, height: 14 }} />
-                                                    <span>Uploading…</span>
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
                                 </div>
                             </div>
                         </div>
                     </div>
                 )}
+                {/* ── Background Elements ───────────────────────────── */}
+                <ShootingStars active={!isInChat} />
             </div>
         </div>
     );
 }
+
+export default ChatInterface;

@@ -25,6 +25,7 @@ export interface ThinkingStep {
 }
 
 export interface StreamState {
+    conversationId: string | null;
     messageId: string | null;
     mode: ReasoningMode | null;
     classification: IntentMetadata | null;
@@ -46,6 +47,7 @@ export type StreamListener = (state: StreamState) => void;
 // ── Initial State Factory ────────────────────────────────────
 function createInitialState(): StreamState {
     return {
+        conversationId: null,
         messageId: null,
         mode: null,
         classification: null,
@@ -261,10 +263,12 @@ export class DeepExStreamClient {
         conversationId: string,
         message: string,
         modeOverride?: ReasoningMode,
-        imageUrl?: string
+        imageUrl?: string,
+        modelOverride?: string
     ): Promise<void> {
         // Reset state
         this.state = createInitialState();
+        this.state.conversationId = conversationId;
         this.updateState({ isThinking: true });
 
         // Create abort controller
@@ -278,6 +282,7 @@ export class DeepExStreamClient {
                 message,
                 image_url: imageUrl,
                 mode_override: modeOverride,
+                model_override: modelOverride,
             });
 
             console.log('[DeepEx] Stage 1 complete. stageData:', stageData);
@@ -318,6 +323,7 @@ export class DeepExStreamClient {
                         layer_order: stageData.layer_order,
                         conversation_history: stageData.conversation_history,
                         complexity: stageData.complexity,
+                        model_override: stageData.model_override,
                     });
                 } catch (err) {
                     console.error('[DeepEx] Stage 2 (ultra-solve) failed:', err);
@@ -366,6 +372,7 @@ export class DeepExStreamClient {
                             layer_order: solverStageData.layer_order,
                             conversation_history: stageData.conversation_history,
                             complexity: stageData.complexity,
+                            model_override: stageData.model_override,
                         });
 
                         // ── Handle ultra-synth continuations ──

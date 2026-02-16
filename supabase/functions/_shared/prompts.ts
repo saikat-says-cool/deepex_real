@@ -54,12 +54,12 @@ Classification rules:
 - "deep": Medium complexity. Requires structured reasoning but a single solver path is sufficient.
 - "ultra_deep": High complexity OR high stakes OR high uncertainty. Multiple perspectives needed. Contradictions likely. Also use for open-ended, philosophical, metaphysical, or creative inquiries where breadth of perspective matters.
 - "parallelism_needed": true if the problem benefits from adversarial/diverse perspectives.
-- "needs_web_search": true if the query requires current facts, real-world data, or recent information.
-- "search_queries": If needs_web_search is true, provide 1-3 search queries that would ground the reasoning.
-- "wants_image_generation": true ONLY if the user is EXPLICITLY asking to CREATE, GENERATE, DRAW, DESIGN, or MAKE an image/picture/illustration/artwork. Examples: "generate an image of...", "create a picture of...", "draw me a...", "make an illustration of...". Do NOT set to true if the user is merely discussing images or asking about images they uploaded.
-- "image_generation_prompt": If wants_image_generation is true, write an optimized, detailed text-to-image prompt that would produce the best possible result. Enhance the user's description with artistic details, style, lighting, composition, and quality keywords. Keep it under 200 words.
+- "needs_web_search": true if the query requires current facts, real-world data, recent information, or IF YOU HAVE EVEN SLIGHT UNCERTAINTY ABOUT THE TOPIC. Default to true if the user asks about people, companies, news, tech trends, or data that could have changed.
+- "search_queries": If needs_web_search is true, provide 1-3 highly specific search queries that would ground the reasoning. Use your free will to decide optimal parameters.
+- "wants_image_generation": true ONLY if the user is EXPLICITLY asking to CREATE, GENERATE, DRAW, DESIGN, or MAKE an image/picture/illustration/artwork.
+- "image_generation_prompt": If wants_image_generation is true, write an optimized, detailed text-to-image prompt.
 
-Be fast. Be precise. Do not explain yourself.`;
+Be fast. Be precise. Ground everything in reality. Use web search liberally. do not explain yourself.`;
 
 export const cortexUserPrompt = (query: string): string =>
     `Classify this query:\n\n"${query}"`;

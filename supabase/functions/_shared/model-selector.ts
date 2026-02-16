@@ -51,7 +51,26 @@ export interface ModelConfig {
  * - Flash-Thinking: Deep analysis, complex decomposition, solving
  * - Flash-Thinking-2601: Critical high-stakes steps, ultimate quality
  */
-export function selectModel(step: PipelineStep, complexity: Complexity): ModelConfig {
+export function selectModel(step: PipelineStep, complexity: Complexity, modelOverride?: string): ModelConfig {
+    // ── Model Override: User selected a specific model (frontier mapping) ──
+    // Only apply to primary reasoning steps, not utility/classification steps
+    if (modelOverride) {
+        const utilitySteps: PipelineStep[] = ['cortex_classify', 'chat_title', 'confidence_gate', 'ultra_confidence'];
+        if (!utilitySteps.includes(step)) {
+            // Derive appropriate config from the overridden model
+            if (modelOverride.includes('Thinking-2601')) {
+                return { model: modelOverride, enableThinking: true, thinkingBudget: 4096 };
+            } else if (modelOverride.includes('Thinking')) {
+                return { model: modelOverride, enableThinking: true, thinkingBudget: 2048 };
+            } else if (modelOverride.includes('Chat')) {
+                return { model: modelOverride, temperature: 0.3 };
+            } else {
+                // Flash-Lite
+                return { model: modelOverride, temperature: 0.2 };
+            }
+        }
+    }
+
     switch (step) {
         // ── Utility (always Flash-Lite) ──────────────────────
         case 'cortex_classify':

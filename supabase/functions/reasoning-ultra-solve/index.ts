@@ -326,6 +326,7 @@ async function runParallelSolvers(
         solver_b: solverBResult,
         solver_c: solverCResult,
         layer_order: layerOrder,
+        complexity,
     });
 }
 

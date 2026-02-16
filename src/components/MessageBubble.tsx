@@ -26,11 +26,21 @@ function confidenceColor(score: number): string {
 }
 
 export function MessageBubble({ message, loadThoughtLogs }: MessageBubbleProps) {
-    const [showThinking, setShowThinking] = useState(false);
+    const [showThinking, setShowThinking] = useState(true);
     const [thoughtLogs, setThoughtLogs] = useState<ThoughtLog[]>([]);
     const [loadingLogs, setLoadingLogs] = useState(false);
     const [showSources, setShowSources] = useState(false);
     const [copied, setCopied] = useState(false);
+    const [collapsedLogs, setCollapsedLogs] = useState<Set<string>>(new Set());
+
+    const toggleLog = (logId: string) => {
+        setCollapsedLogs(prev => {
+            const next = new Set(prev);
+            if (next.has(logId)) next.delete(logId);
+            else next.add(logId);
+            return next;
+        });
+    };
 
     const handleToggleThinking = useCallback(async () => {
         if (!showThinking && thoughtLogs.length === 0) {
@@ -118,9 +128,9 @@ export function MessageBubble({ message, loadThoughtLogs }: MessageBubbleProps) 
 
     const getModeIcon = () => {
         switch (message.mode) {
-            case 'deep': return '🧠';
-            case 'ultra_deep': return '⚛️';
-            default: return '⚡';
+            case 'deep': return '';
+            case 'ultra_deep': return '';
+            default: return '';
         }
     };
 
@@ -137,9 +147,6 @@ export function MessageBubble({ message, loadThoughtLogs }: MessageBubbleProps) 
                     <button className="tb-header" onClick={handleToggleThinking} type="button">
                         <div className="tb-header-left">
                             <div className="tb-header-indicator complete">
-                                <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
-                                    <path d="M3 8.5L6.5 12L13 4" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-                                </svg>
                             </div>
                             <span className="tb-header-mode">{getModeIcon()}</span>
                             <span className="tb-header-title">
@@ -151,7 +158,7 @@ export function MessageBubble({ message, loadThoughtLogs }: MessageBubbleProps) 
                                 )}
                             </span>
                             {message.was_escalated && (
-                                <span className="tb-badge tb-badge--escalated">⬆ Escalated</span>
+                                <span className="tb-badge tb-badge--escalated">Escalated</span>
                             )}
                         </div>
                         <svg
@@ -171,75 +178,75 @@ export function MessageBubble({ message, loadThoughtLogs }: MessageBubbleProps) 
                                 </div>
                             )}
 
-                            {/* Classification Tags */}
-                            {message.intent_metadata && (
-                                <div className="tb-tags">
-                                    <span className="tb-tag tb-tag--domain">
-                                        {(message.intent_metadata as unknown as Record<string, unknown>).domain as string}
-                                    </span>
-                                    <span className={`tb-tag tb-tag--mode ${message.mode === 'ultra_deep' ? 'ultra' : ''}`}>
-                                        {getModeLabel()}
-                                    </span>
-                                    {((message.intent_metadata as unknown as Record<string, unknown>).reasoning_modes as string[] || []).map((rm: string) => (
-                                        <span key={rm} className="tb-tag tb-tag--reasoning">{rm}</span>
-                                    ))}
-                                </div>
-                            )}
+
 
                             {/* Sequential Steps */}
                             {sequentialLogs.length > 0 && (
                                 <div className="tb-timeline">
-                                    {sequentialLogs.map((log, i) => (
-                                        <div key={log.id} className="tb-timeline-step tb-timeline-step--complete">
-                                            {i < sequentialLogs.length - 1 && (
-                                                <div className="tb-timeline-connector done" />
-                                            )}
-                                            <div className="tb-step-icon tb-step-icon--complete">
-                                                <svg width="10" height="10" viewBox="0 0 16 16" fill="none">
-                                                    <path d="M3 8.5L6.5 12L13 4" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-                                                </svg>
-                                            </div>
-                                            <div className="tb-step-body">
-                                                <div className="tb-step-header">
-                                                    <span className="tb-step-label">{log.layer_label}</span>
+                                    {sequentialLogs.map((log, i) => (<div key={log.id} className="tb-timeline-step tb-timeline-step--complete">
+
+                                        <div className="tb-step-icon tb-step-icon--complete">
+                                            <svg width="10" height="10" viewBox="0 0 16 16" fill="none">
+                                                <path d="M3 8.5L6.5 12L13 4" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                                            </svg>
+                                        </div>
+                                        <div className="tb-step-body">
+                                            <div
+                                                className="tb-step-header"
+                                                onClick={() => toggleLog(log.id)}
+                                                style={{ cursor: log.content ? 'pointer' : 'default' }}
+                                            >
+                                                <span className="tb-step-label">{log.layer_label}</span>
+                                                <div className="tb-step-header-right">
                                                     {getLayerDuration(log) && (
                                                         <span className="tb-step-duration">
                                                             {getLayerDuration(log)}
                                                         </span>
                                                     )}
+                                                    {log.content && (
+                                                        <svg
+                                                            className={`tb-step-chevron ${collapsedLogs.has(log.id) ? '' : 'open'}`}
+                                                            width="10" height="10" viewBox="0 0 16 16" fill="none"
+                                                        >
+                                                            <path d="M4 6L8 10L12 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                                                        </svg>
+                                                    )}
                                                 </div>
-                                                {log.content && (
-                                                    <div className="tb-step-content">{log.content}</div>
-                                                )}
                                             </div>
+                                            {log.content && !collapsedLogs.has(log.id) && (
+                                                <div className="tb-step-content">{log.content}</div>
+                                            )}
                                         </div>
+                                    </div>
                                     ))}
                                 </div>
                             )}
 
                             {/* Parallel Solvers */}
                             {parallelLogs.length > 0 && (
-                                <div className="tb-parallel">
-                                    <div className="tb-parallel-header">
-                                        <span className="tb-parallel-icon">⚡</span>
-                                        <span className="tb-parallel-title">Parallel Reasoning Paths</span>
-                                    </div>
-                                    <div className="tb-parallel-grid">
-                                        {parallelLogs.map((log, i) => (
-                                            <div key={log.id} className="tb-solver-card tb-solver-card--complete">
-                                                <div className="tb-solver-header">
-                                                    <span className={`tb-solver-dot solver-${i}`} />
-                                                    <span className="tb-solver-label">{log.layer_label}</span>
-                                                    <svg className="tb-solver-check" width="12" height="12" viewBox="0 0 16 16" fill="none">
-                                                        <path d="M3 8.5L6.5 12L13 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                                    </svg>
-                                                </div>
+                                <div className="tb-parallel-grid">
+                                    {parallelLogs.map((log, i) => (
+                                        <div key={log.id} className="tb-solver-card tb-solver-card--complete">
+                                            <div
+                                                className="tb-solver-header"
+                                                onClick={() => toggleLog(log.id)}
+                                                style={{ cursor: log.content ? 'pointer' : 'default' }}
+                                            >
+                                                <span className="tb-solver-label">{log.layer_label}</span>
                                                 {log.content && (
-                                                    <div className="tb-solver-content">{log.content}</div>
+                                                    <svg
+                                                        className={`tb-step-chevron ${collapsedLogs.has(log.id) ? '' : 'open'}`}
+                                                        width="10" height="10" viewBox="0 0 16 16" fill="none"
+                                                    >
+                                                        <path d="M4 6L8 10L12 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                                                    </svg>
                                                 )}
                                             </div>
-                                        ))}
-                                    </div>
+                                            {log.content && !collapsedLogs.has(log.id) && (
+                                                <div className="tb-solver-content">{log.content}</div>
+                                            )}
+                                        </div>
+                                    ))}
                                 </div>
                             )}
                         </div>
@@ -299,13 +306,17 @@ export function MessageBubble({ message, loadThoughtLogs }: MessageBubbleProps) 
 
             {/* ── Confidence Bar ──────────────────────────── */}
             {message.confidence_score !== null && message.confidence_score !== undefined && (
-                <div className="tb-confidence" style={{ marginTop: 8 }}>
+                <div className="tb-confidence" style={{ marginTop: 12 }}>
                     <div className="tb-confidence-header">
-                        <span className="tb-confidence-label">Confidence Score</span>
-                        <span
-                            className="tb-confidence-value"
-                            style={{ color: confidenceColor(message.confidence_score) }}
-                        >
+                        <div className="tb-confidence-label-group">
+                            <span className="tb-confidence-label">Confidence Assessment</span>
+                            <span className="tb-confidence-status">
+                                {message.confidence_score >= 90 ? 'ULTIMATE' :
+                                    message.confidence_score >= 80 ? 'HIGH' :
+                                        message.confidence_score >= 60 ? 'MODERATE' : 'INCONCLUSIVE'}
+                            </span>
+                        </div>
+                        <span className="tb-confidence-value">
                             {Math.round(message.confidence_score)}%
                         </span>
                     </div>
@@ -314,16 +325,16 @@ export function MessageBubble({ message, loadThoughtLogs }: MessageBubbleProps) 
                             className="tb-confidence-fill"
                             style={{
                                 width: `${Math.min(message.confidence_score, 100)}%`,
-                                background: `linear-gradient(90deg, #ef4444 0%, #f97316 25%, #eab308 50%, #22c55e 75%, ${confidenceColor(message.confidence_score)} 100%)`,
+                                background: 'var(--text-primary)',
                             }}
                         />
-                        <div className="tb-confidence-threshold" style={{ left: '70%' }} />
+                        <div className="tb-confidence-threshold" style={{ left: '70%' }} title="High Confidence Threshold" />
                     </div>
                 </div>
             )}
 
             {/* ── Sources ────────────────────────────────── */}
-            {message.sources && message.sources.length > 0 && (
+            {message.sources && (message.sources as any[]).length > 0 && (
                 <div className="tb-sources" style={{ marginTop: 8 }}>
                     <button
                         className="tb-sources-toggle"
@@ -333,7 +344,7 @@ export function MessageBubble({ message, loadThoughtLogs }: MessageBubbleProps) 
                         <svg width="12" height="12" viewBox="0 0 16 16" fill="none" style={{ marginRight: 4 }}>
                             <path d="M8 1v14M1 8h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
                         </svg>
-                        {message.sources.length} Source{message.sources.length !== 1 ? 's' : ''} Referenced
+                        {(message.sources as any[]).length} Source{(message.sources as any[]).length !== 1 ? 's' : ''} Referenced
                         <svg
                             className={`tb-chevron-mini ${showSources ? 'open' : ''}`}
                             width="10" height="10" viewBox="0 0 16 16" fill="none"

@@ -42,10 +42,11 @@ Deno.serve(async (req) => {
 
     try {
         const body = await req.json();
+        const complexity: Complexity = (body.complexity as Complexity) || 'high';
 
         // ── Handle continuation (checkpoint resume) ─────────
         if (body.stage === 'continue_ultra_synth') {
-            return handleUltraSynthContinuation(supabase, body);
+            return handleUltraSynthContinuation(supabase, body, complexity);
         }
 
         const {
@@ -62,7 +63,6 @@ Deno.serve(async (req) => {
         } = body;
 
         const convCtx = conversationHistory || '';
-        const complexity: Complexity = body.complexity || 'high'; // Default to 'high' for Ultra-Deep
         const functionStart = Date.now();
 
         const sse = new SSEStream();
@@ -501,7 +501,7 @@ async function runMetaCriticAndFinalize(
     // ── Layer 7: Final Confidence ────────────────────────
     await runFinalConfidenceAndEmit(
         sse, supabase, messageId, query,
-        synthesizedAnswer, sources, startTime, layerOrder
+        synthesizedAnswer, sources, startTime, layerOrder, complexity
     );
 }
 
@@ -518,6 +518,7 @@ async function runFinalConfidenceAndEmit(
     sources: Source[],
     startTime: number,
     layerOrder: number,
+    complexity: Complexity = 'high',
 ): Promise<void> {
     sse.emitLayerStart('ultra_confidence', 'Final Confidence Assessment');
     layerOrder++;
@@ -603,7 +604,8 @@ async function runFinalConfidenceAndEmit(
 
 function handleUltraSynthContinuation(
     supabase: ReturnType<typeof createClient>,
-    body: Record<string, unknown>
+    body: Record<string, unknown>,
+    passedComplexity?: Complexity
 ): Response {
     const {
         message_id: messageId,
@@ -632,7 +634,7 @@ function handleUltraSynthContinuation(
     };
 
     const convCtx = conversationHistory || '';
-    const complexity: Complexity = (body.complexity as Complexity) || 'high';
+    const complexity: Complexity = passedComplexity || (body.complexity as Complexity) || 'high';
     const continuationStart = Date.now();
 
     const sse = new SSEStream();
@@ -763,7 +765,7 @@ function handleUltraSynthContinuation(
                 // Jump straight to confidence
                 await runFinalConfidenceAndEmit(
                     sse, supabase, messageId, query,
-                    synthesizedAnswer, sources, startTime, layerOrder
+                    synthesizedAnswer, sources, startTime, layerOrder, complexity
                 );
             }
 

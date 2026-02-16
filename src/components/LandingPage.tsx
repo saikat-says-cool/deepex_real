@@ -35,7 +35,7 @@ export function LandingPage({ onGetStarted }: LandingPageProps) {
             <nav className="landing-nav">
                 <div className="landing-nav-left">
                     <span className="landing-logo">DeepEx</span>
-                    <span className="landing-logo-tag">by Artificialyze</span>
+
                 </div>
                 <div className="landing-nav-links">
                     <button onClick={() => scrollTo('how-it-works')}>How It Works</button>
@@ -50,7 +50,7 @@ export function LandingPage({ onGetStarted }: LandingPageProps) {
                 </button>
                 {/* Mobile hamburger */}
                 <button className="landing-mobile-toggle" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
-                    {mobileMenuOpen ? '✕' : '☰'}
+                    {mobileMenuOpen ? 'X' : 'Menu'}
                 </button>
             </nav>
 
@@ -721,7 +721,7 @@ export function LandingPage({ onGetStarted }: LandingPageProps) {
                     <div className="landing-footer-brand">
                         <span className="landing-footer-logo">DeepEx</span>
                         <p className="landing-footer-desc">
-                            An Adaptive Cognitive Reasoning Engine by Artificialyze.
+                            An Adaptive Cognitive Reasoning Engine.
                             Built to think harder and push past surface-level answers.
                         </p>
                     </div>
@@ -744,14 +744,11 @@ export function LandingPage({ onGetStarted }: LandingPageProps) {
                             <a href="https://www.instagram.com/try_deepex/" target="_blank" rel="noopener noreferrer">Instagram</a>
                             <a href="mailto:inquiries@artificialyze.com">inquiries@artificialyze.com</a>
                         </div>
-                        <div className="footer-col">
-                            <h4>Company</h4>
-                            <a href="https://artificialyze.com" target="_blank" rel="noopener noreferrer">Artificialyze</a>
-                        </div>
+
                     </div>
                 </div>
                 <div className="landing-footer-bottom">
-                    <span className="landing-footer-copy">&copy; {new Date().getFullYear()} Artificialyze. All rights reserved.</span>
+                    <span className="landing-footer-copy">&copy; {new Date().getFullYear()} DeepEx. All rights reserved.</span>
                 </div>
             </footer>
         </div>

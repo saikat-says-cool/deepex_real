@@ -50,7 +50,7 @@ Deno.serve(async (req) => {
             return handleDeepContinuation(supabase, body);
         }
 
-        const { conversation_id, message, image_url, mode_override } = body as ChatRequest;
+        const { conversation_id, message, image_url, mode_override, model_override } = body as ChatRequest;
 
         // ── Create SSE stream ─────────────────────────────────
         const sse = new SSEStream();
@@ -152,6 +152,11 @@ Deno.serve(async (req) => {
 
                 const messageId = assistantMsg!.id;
                 let layerOrder = 0;
+
+                // If mode is explicitly set to instant, tell the client immediately so it can hide thinking UI
+                if (mode_override === 'instant') {
+                    sse.emitModeSelected('instant');
+                }
 
                 // ══════════════════════════════════════════════════════
                 // PHASE 0: CORTEX — Problem Classification
@@ -379,7 +384,7 @@ Deno.serve(async (req) => {
                 if (mode === 'instant') {
                     sse.emitFinalStart(messageId);
 
-                    const instantModel = selectModel('instant_answer', effectiveComplexity);
+                    const instantModel = selectModel('instant_answer', effectiveComplexity, model_override);
                     logModelSelection('instant_answer', effectiveComplexity, instantModel);
 
                     let finalContent = '';
@@ -447,7 +452,7 @@ Deno.serve(async (req) => {
                 // ══════════════════════════════════════════════════════
                 if (mode === 'deep') {
                     const result = await runDeepMode(
-                        sse, supabase, messageId, message + visionContext, searchContext, sources, startTime, layerOrder, conversationHistory, functionStartTime, effectiveComplexity
+                        sse, supabase, messageId, message + visionContext, searchContext, sources, startTime, layerOrder, conversationHistory, functionStartTime, effectiveComplexity, model_override
                     );
                     // Check escalation gate
                     if (result.shouldEscalate) {
@@ -493,6 +498,7 @@ Deno.serve(async (req) => {
                         layer_order: layerOrder,
                         conversation_history: conversationHistory,
                         complexity: effectiveComplexity,
+                        model_override,
                     });
                     sse.close();
                     return;
@@ -534,7 +540,8 @@ async function runDeepMode(
     layerOrder: number,
     conversationHistory: string,
     functionStartTime: number,
-    complexity: Complexity = 'medium'
+    complexity: Complexity = 'medium',
+    modelOverride?: string
 ): Promise<DeepModeResult> {
 
     // Helper: check if we're running hot on time.
@@ -552,7 +559,7 @@ async function runDeepMode(
 
     sse.emitLayerChunk('decomposition', '> Analyzing constraints and identifying unknowns...\n');
 
-    const decompModel = selectModel('decomposition', complexity);
+    const decompModel = selectModel('decomposition', complexity, modelOverride);
     logModelSelection('decomposition', complexity, decompModel);
     const decompositionResult = await longcatComplete(
         [
@@ -605,6 +612,7 @@ async function runDeepMode(
             layer_order: layerOrder,
             conversation_history: conversationHistory,
             complexity,
+            model_override: modelOverride,
             checkpoint: {
                 continue_from: 'primary_solver',
                 decomposition: problemMapStr,
@@ -620,7 +628,7 @@ async function runDeepMode(
 
     sse.emitLayerChunk('primary_solver', '> Initializing solver context...\n');
 
-    const solverModel = selectModel('primary_solver', complexity);
+    const solverModel = selectModel('primary_solver', complexity, modelOverride);
     logModelSelection('primary_solver', complexity, solverModel);
     let primarySolution = '';
     for await (const chunk of longcatStream(
@@ -667,6 +675,7 @@ async function runDeepMode(
             layer_order: layerOrder,
             conversation_history: conversationHistory,
             complexity,
+            model_override: modelOverride,
             checkpoint: {
                 continue_from: 'fast_critic',
                 decomposition: problemMapStr,
@@ -683,7 +692,7 @@ async function runDeepMode(
 
     sse.emitLayerChunk('fast_critic', '> Reviewing solution against constraints...\n> Checking for logical gaps...\n');
 
-    const criticModel = selectModel('fast_critic', complexity);
+    const criticModel = selectModel('fast_critic', complexity, modelOverride);
     logModelSelection('fast_critic', complexity, criticModel);
     const criticResult = await longcatComplete(
         [
@@ -730,6 +739,7 @@ async function runDeepMode(
             layer_order: layerOrder,
             conversation_history: conversationHistory,
             complexity,
+            model_override: modelOverride,
             checkpoint: {
                 continue_from: 'refiner',
                 decomposition: problemMapStr,
@@ -747,7 +757,7 @@ async function runDeepMode(
 
     sse.emitLayerChunk('refiner', '> incorporating critique feedback...\n> Refining clarity and structure...\n\n');
 
-    const refinerModel = selectModel('refiner', complexity);
+    const refinerModel = selectModel('refiner', complexity, modelOverride);
     logModelSelection('refiner', complexity, refinerModel);
     let refinedAnswer = '';
     for await (const chunk of longcatStream(
@@ -794,6 +804,7 @@ async function runDeepMode(
             layer_order: layerOrder,
             conversation_history: conversationHistory,
             complexity,
+            model_override: modelOverride,
             checkpoint: {
                 continue_from: 'confidence_gate',
                 decomposition: problemMapStr,
@@ -812,7 +823,7 @@ async function runDeepMode(
 
     sse.emitLayerChunk('confidence_gate', '> Calculating confidence score...\n> Assessing assumptions...\n');
 
-    const confModel = selectModel('confidence_gate', complexity);
+    const confModel = selectModel('confidence_gate', complexity, modelOverride);
     logModelSelection('confidence_gate', complexity, confModel);
     const confidenceResult = await longcatComplete(
         [
@@ -922,6 +933,7 @@ async function handleDeepContinuation(
     const response = sse.getResponse();
     const functionStartTime = Date.now();
     const contComplexity: Complexity = (body.complexity as Complexity) || 'medium';
+    const contModelOverride = (body.model_override as string) || undefined;
     let layerOrder = initialLayerOrder || 0;
 
     // Helper: check if we're running hot on time
@@ -942,7 +954,7 @@ async function handleDeepContinuation(
                 layerOrder++;
                 const layerStart = Date.now();
 
-                const contSolverModel = selectModel('primary_solver', contComplexity);
+                const contSolverModel = selectModel('primary_solver', contComplexity, contModelOverride);
                 logModelSelection('primary_solver', contComplexity, contSolverModel);
                 for await (const chunk of longcatStream(
                     [
@@ -981,6 +993,7 @@ async function handleDeepContinuation(
                         start_time: originalStartTime, layer_order: layerOrder,
                         conversation_history: conversationHistory,
                         complexity: contComplexity,
+                        model_override: contModelOverride,
                         checkpoint: {
                             continue_from: 'fast_critic',
                             decomposition: problemMapStr,
@@ -998,7 +1011,7 @@ async function handleDeepContinuation(
                 layerOrder++;
                 const layerStart = Date.now();
 
-                const contCriticModel = selectModel('fast_critic', contComplexity);
+                const contCriticModel = selectModel('fast_critic', contComplexity, contModelOverride);
                 logModelSelection('fast_critic', contComplexity, contCriticModel);
                 const criticResult = await longcatComplete(
                     [
@@ -1038,6 +1051,7 @@ async function handleDeepContinuation(
                         start_time: originalStartTime, layer_order: layerOrder,
                         conversation_history: conversationHistory,
                         complexity: contComplexity,
+                        model_override: contModelOverride,
                         checkpoint: {
                             continue_from: 'refiner',
                             decomposition: problemMapStr,
@@ -1056,7 +1070,7 @@ async function handleDeepContinuation(
                 layerOrder++;
                 const layerStart = Date.now();
 
-                const contRefinerModel = selectModel('refiner', contComplexity);
+                const contRefinerModel = selectModel('refiner', contComplexity, contModelOverride);
                 logModelSelection('refiner', contComplexity, contRefinerModel);
                 refinedAnswer = '';
                 for await (const chunk of longcatStream(
@@ -1096,6 +1110,7 @@ async function handleDeepContinuation(
                         start_time: originalStartTime, layer_order: layerOrder,
                         conversation_history: conversationHistory,
                         complexity: contComplexity,
+                        model_override: contModelOverride,
                         checkpoint: {
                             continue_from: 'confidence_gate',
                             decomposition: problemMapStr,
@@ -1114,7 +1129,7 @@ async function handleDeepContinuation(
             layerOrder++;
             const layerStart5 = Date.now();
 
-            const contConfModel = selectModel('confidence_gate', contComplexity);
+            const contConfModel = selectModel('confidence_gate', contComplexity, contModelOverride);
             logModelSelection('confidence_gate', contComplexity, contConfModel);
             const confidenceResult = await longcatComplete(
                 [
@@ -1178,6 +1193,7 @@ async function handleDeepContinuation(
                     layer_order: layerOrder,
                     conversation_history: conversationHistory,
                     complexity: contComplexity,
+                    model_override: contModelOverride,
                 });
             } else {
                 // Return the refined answer as final
