@@ -20,7 +20,7 @@ export function LandingPage({ onGetStarted }: LandingPageProps) {
     };
 
     return (
-        <div className={`landing ${visible ? 'visible' : ''}`}>
+        <div className={`landing landing-page-root ${visible ? 'visible' : ''}`}>
             {/* ── Ambient background ──────────────────────────────── */}
             <div className="landing-bg">
                 <div className="landing-glow glow-1" />

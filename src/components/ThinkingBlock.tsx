@@ -4,8 +4,9 @@
 // Supports Deep and Ultra-Deep pipelines.
 // ============================================================
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import type { StreamState, ThinkingStep } from '../lib/stream-client';
+import { haptics } from '../lib/haptics';
 
 interface ThinkingBlockProps {
     state: StreamState;
@@ -117,6 +118,13 @@ export function ThinkingBlock({ state }: ThinkingBlockProps) {
 
     const completedSteps = steps.filter((s) => s.status === 'complete').length;
     const activeStep = steps.find((s) => s.status === 'active');
+
+    // Haptic feedback when steps complete
+    useEffect(() => {
+        if (completedSteps > 0) {
+            haptics.impact();
+        }
+    }, [completedSteps]);
 
     // Separate parallel solvers from sequential steps
     const parallelSteps = useMemo(

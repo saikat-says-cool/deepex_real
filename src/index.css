@@ -3,7 +3,7 @@
    Matching the "Think Harder. Push limits." aesthetic
    ============================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&family=Nunito:wght@300;400;500;600;700;800&display=swap');
 
 /* â”€â”€ CSS Variables â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 :root {
@@ -31,13 +31,21 @@
 
   /* Typography */
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-chat: 'Nunito', system-ui, -apple-system, sans-serif;
   --font-serif: 'Instrument Serif', Georgia, serif;
   --font-mono: 'JetBrains Mono', monospace;
+
+  /* Elite Spacing Tokens */
+  --ls-tight: -0.025em;
+  --ls-normal: -0.0125em;
+  --ls-wide: 0.01em;
+  --ws-elite: 0.02em;
+  --lh-elite: 1.65;
 
   /* Spacing */
   --sidebar-width: 300px;
   --header-height: 52px;
-  --max-content-width: 760px;
+  --max-content-width: 900px;
 
   --transition-normal: 250ms cubic-bezier(0.2, 0.8, 0.2, 1);
   --transition-fast: 150ms ease;
@@ -46,6 +54,12 @@
   --radius-lg: 12px;
   --radius-xl: 16px;
   --radius-full: 9999px;
+
+  /* Mobile Safe Areas */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
 }
 
 /* Entry Animation */
@@ -105,12 +119,121 @@ body {
   font-family: var(--font-sans);
   background: var(--bg-primary);
   color: var(--text-primary);
-  line-height: 1.6;
+  line-height: var(--lh-elite);
+  letter-spacing: var(--ls-normal);
+  word-spacing: var(--ws-elite);
   margin: 0;
   min-height: 100vh;
   width: 100vw;
   overflow-x: hidden;
   position: relative;
+}
+
+/* Chat Interface Typography Override */
+.app-layout,
+.chat-view,
+.sidebar,
+.top-header,
+.hero-landing,
+.hero-landing *,
+.thinking-block,
+.message-bubble,
+.chat-input,
+.hero-input {
+  font-family: var(--font-chat) !important;
+  letter-spacing: var(--ls-normal);
+  word-spacing: var(--ws-elite);
+}
+
+/* Specific Font Weights and Spacing for attractiveness */
+.logo-text,
+.sidebar-title,
+.tb-header-title,
+.profile-name {
+  font-weight: 800;
+  letter-spacing: var(--ls-tight);
+}
+
+.message-content {
+  font-weight: 400;
+  line-height: var(--lh-elite);
+}
+
+.hero-tagline {
+  font-weight: 400 !important;
+  letter-spacing: var(--ls-tight) !important;
+  font-size: 3rem;
+  margin-bottom: 2rem;
+  line-height: 1.1;
+}
+
+/* Preserve original font for code and JSON */
+pre,
+code,
+kbd,
+samp,
+.font-mono,
+.tb-step-content,
+.tb-solver-content {
+  font-family: var(--font-mono) !important;
+  letter-spacing: normal !important;
+  word-spacing: normal !important;
+  font-weight: 500 !important;
+}
+
+/* Landing Page & Auth Page Exclusion */
+.landing-page-root *,
+.auth-page-root * {
+  font-family: var(--font-sans) !important;
+  letter-spacing: normal !important;
+  word-spacing: normal !important;
+}
+
+/* Hero Action Chips */
+.hero-actions-row {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 24px;
+  margin-bottom: 24px;
+}
+
+.hero-action-chip {
+  display: flex;
+  align-items: center;
+  padding: 12px 28px;
+  background: var(--bg-primary);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-full);
+  color: var(--text-secondary);
+  font-size: 16px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-normal);
+  font-family: var(--font-chat);
+}
+
+.hero-action-chip:hover {
+  background: var(--bg-secondary);
+  border-color: var(--text-primary);
+  color: var(--text-primary);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.hero-action-chip svg {
+  color: var(--text-tertiary);
+  transition: color var(--transition-normal);
+}
+
+.hero-action-chip:hover svg {
+  color: var(--text-primary);
+}
+
+.chat-disclaimer {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  text-align: center;
 }
 
 .shooting-stars-background {
@@ -350,6 +473,8 @@ body {
   flex-shrink: 0;
   background: var(--bg-primary);
   z-index: 10;
+  padding-top: var(--safe-top);
+  height: calc(var(--header-height) + var(--safe-top));
 }
 
 .top-header-left {
@@ -533,6 +658,8 @@ body {
   transition: transform var(--transition-normal);
   /* Serious transition */
   box-shadow: 10px 0 40px rgba(0, 0, 0, 0.03);
+  padding-top: var(--safe-top);
+  padding-left: var(--safe-left);
 }
 
 .sidebar.open {
@@ -662,7 +789,8 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 0 24px 16vh;
+  padding: 0 24px;
+  margin-top: -20vh;
   gap: 28px;
   animation: heroFadeIn 0.6s ease-out;
 }
@@ -1055,10 +1183,18 @@ body {
 
 /* Chat Input (Bottom Fixed) */
 .chat-input-area {
-  padding: 12px 24px 20px;
+  padding: 12px 24px calc(48px + var(--safe-bottom));
   flex-shrink: 0;
   background: var(--bg-primary);
   border-top: 1px solid transparent;
+}
+
+.chat-disclaimer {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  text-align: center;
+  margin-top: 14px;
+  opacity: 0.6;
 }
 
 .chat-input-container {
@@ -5591,5 +5727,23 @@ body {
 
   .conversation-delete {
     opacity: 1 !important;
+  }
+}
+
+/* Mobile App Enhancements */
+.chat-input-area {
+  padding-bottom: var(--safe-bottom);
+  background: var(--bg-primary);
+}
+
+.hero-landing {
+  padding-top: var(--safe-top);
+  padding-bottom: var(--safe-bottom);
+}
+
+@media (max-width: 768px) {
+  .top-header {
+    padding-left: calc(12px + var(--safe-left));
+    padding-right: calc(12px + var(--safe-right));
   }
 }

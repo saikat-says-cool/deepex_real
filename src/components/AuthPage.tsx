@@ -55,7 +55,7 @@ export function AuthPage({ onBack }: AuthPageProps) {
   };
 
   return (
-    <div className="auth-container">
+    <div className="auth-container auth-page-root">
       <div className="auth-box">
         {onBack && (
           <button className="auth-back" onClick={onBack}>
