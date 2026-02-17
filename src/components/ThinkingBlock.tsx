@@ -59,6 +59,14 @@ function getStepIcon(status: string): React.ReactElement {
     }
 }
 
+/** Dynamic color based on confidence score */
+function confidenceColor(score: number): string {
+    if (score >= 90) return '#16a34a'; // Green
+    if (score >= 70) return '#2563eb'; // Blue
+    if (score >= 50) return '#d97706'; // Orange
+    return '#dc2626'; // Red
+}
+
 /* ── Layer name → refined label ───────────────────────────── */
 function refineLabel(layer: string, label: string): string {
     // Use the SSE label if it's reasonable, otherwise refine
