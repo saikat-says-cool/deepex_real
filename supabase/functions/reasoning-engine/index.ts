@@ -237,11 +237,19 @@ Deno.serve(async (req) => {
                     layerOrder++;
 
                     try {
-                        const searchQueries = (metadata as IntentMetadata & { search_queries?: string[] }).search_queries || [message];
+                        const searchQueries = metadata.search_queries || [message];
                         const allResults = [];
 
-                        for (const q of searchQueries.slice(0, 2)) {
-                            const { sources: s, rawResults } = await webSearch(q, { count: 4 });
+                        for (const sq of searchQueries.slice(0, 5)) {
+                            const query = typeof sq === 'string' ? sq : sq.query;
+                            const options = typeof sq === 'string' ? { count: 5 } : {
+                                count: sq.count || 5,
+                                freshness: sq.freshness,
+                                summary: sq.summary ?? true
+                            };
+
+                            console.log(`[DeepEx] Executing search: "${query}" with options:`, options);
+                            const { sources: s, rawResults } = await webSearch(query, options);
                             sources.push(...s);
                             allResults.push(...rawResults);
                         }

@@ -178,8 +178,7 @@ export function ThinkingBlock({ state }: ThinkingBlockProps) {
             </button >
 
             {/* ═══ BODY ══════════════════════════════════════════ */}
-            < div className={`tb-body ${isOpen ? 'open' : ''}`
-            }>
+            <div className={`tb-body ${isOpen ? 'open' : ''}`}>
                 <div className="tb-body-inner">
 
 
@@ -189,7 +188,7 @@ export function ThinkingBlock({ state }: ThinkingBlockProps) {
                             {sequentialSteps.map((step, i) => (
                                 <div
                                     key={`${step.layer}-${i}`}
-                                    className={`tb-timeline-step tb-timeline-step--${step.status}`}
+                                    className={`tb-timeline-step tb-timeline-step--${step.status} reveal-up`}
                                 >
                                     {/* Connector line */}
                                     {i < sequentialSteps.length - 1 && (
@@ -242,8 +241,8 @@ export function ThinkingBlock({ state }: ThinkingBlockProps) {
                             <div className="tb-parallel-grid">
                                 {parallelSteps.map((solver, i) => (
                                     <div
-                                        key={`solver-${i}`}
-                                        className={`tb-solver-card tb-solver-card--${solver.status}`}
+                                        key={`${solver.layer}-${i}`}
+                                        className={`tb-solver-card tb-solver-card--${solver.status} reveal-up`}
                                     >
                                         <div
                                             className="tb-solver-header"

@@ -174,7 +174,8 @@ export function buildSearchContext(results: LangSearchWebPage[]): string {
         const text = r.summary || r.snippet || '';
         return [
             `[Source ${i + 1}] ${r.name}`,
-            `URL: ${r.url}`,
+            `Source: ${r.displayUrl}`,
+            `Published: ${r.datePublished || 'Unknown'}`,
             `Content: ${text}`,
             '',
         ].join('\n');

@@ -30,6 +30,13 @@ export type ReasoningType =
 
 export type Severity = 'low' | 'medium' | 'high';
 
+export interface SearchConfig {
+    query: string;
+    count?: number;
+    freshness?: 'noLimit' | 'oneDay' | 'oneWeek' | 'oneMonth' | 'oneYear';
+    summary?: boolean;
+}
+
 export interface IntentMetadata {
     domain: Domain;
     reasoning_modes: ReasoningType[];
@@ -38,6 +45,8 @@ export interface IntentMetadata {
     uncertainty: Severity;
     recommended_mode: ReasoningMode;
     parallelism_needed: boolean;
+    needs_web_search?: boolean;
+    search_queries?: (string | SearchConfig)[];
 }
 
 export type ThoughtLayer =

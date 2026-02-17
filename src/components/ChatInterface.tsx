@@ -143,6 +143,8 @@ export function ChatInterface() {
     // Derived: currently selected frontier model
     const selectedFrontier = FRONTIER_MODELS.find(m => m.id === selectedModelId)!;
 
+
+
     useEffect(() => {
         supabase.auth.getUser().then(({ data }) => {
             if (data?.user) {
@@ -357,37 +359,37 @@ export function ChatInterface() {
                     )}
                 </div>
 
-                {/* ── Profile Button (bottom of sidebar) ─────── */}
-                <div className="sidebar-profile-area" ref={profileRef}>
-                    {showProfile && (
-                        <div className="profile-popover">
-                            <div className="profile-popover-header">
-                                <div className="profile-avatar">
-                                    {userMeta.name ? userMeta.name.charAt(0).toUpperCase() : '?'}
+                <div className="sidebar-bottom">
+
+
+                    <div className="sidebar-profile-area" ref={profileRef}>
+                        {showProfile && (
+                            <div className="profile-popover reveal-up">
+                                <div className="profile-popover-header">
+                                    <div className="profile-avatar">
+                                        {userMeta.name ? userMeta.name.charAt(0).toUpperCase() : '?'}
+                                    </div>
+                                    <div className="profile-info">
+                                        <span className="profile-name">{userMeta.name || 'User'}</span>
+                                        <span className="profile-email">{userMeta.email}</span>
+                                    </div>
                                 </div>
-                                <div className="profile-info">
-                                    <span className="profile-name">{userMeta.name || 'User'}</span>
-                                    <span className="profile-email">{userMeta.email}</span>
-                                </div>
+                                <div className="profile-popover-divider" />
+                                <button className="profile-signout" onClick={handleSignOut}>
+                                    Sign Out
+                                </button>
                             </div>
-                            <div className="profile-popover-divider" />
-                            <button className="profile-signout" onClick={handleSignOut}>
-                                Sign Out
-                            </button>
-                        </div>
-                    )}
-                    <button
-                        className="sidebar-profile-btn"
-                        onClick={() => setShowProfile(!showProfile)}
-                    >
-                        <div className="profile-avatar-small">
-                            {userMeta.name ? userMeta.name.charAt(0).toUpperCase() : '?'}
-                        </div>
-                        <div className="sidebar-profile-text">
-                            <span className="sidebar-profile-name">{userMeta.name || 'User'}</span>
-                            <span className="sidebar-profile-email">{userMeta.email}</span>
-                        </div>
-                    </button>
+                        )}
+                        <button className="sidebar-profile-btn" onClick={() => setShowProfile(!showProfile)}>
+                            <div className="sidebar-profile-avatar">
+                                {userMeta.name ? userMeta.name.charAt(0).toUpperCase() : (userMeta.email ? userMeta.email.charAt(0).toUpperCase() : '?')}
+                            </div>
+                            <div className="sidebar-profile-text">
+                                <span className="sidebar-profile-name">{userMeta.name || 'User'}</span>
+                                <span className="sidebar-profile-email">{userMeta.email}</span>
+                            </div>
+                        </button>
+                    </div>
                 </div>
             </aside>
 
@@ -410,10 +412,11 @@ export function ChatInterface() {
                 <div className="top-header-right">
                     <span className="header-badge">ENTERPRISE</span>
                 </div>
-            </header>
+            </header >
 
             {/* ── Main Content ─────────────────────────────────────── */}
-            <div className={`main-content`}>
+            < div className={`main-content`
+            }>
 
                 {!isInChat ? (
                     /* ══ HERO LANDING STATE ══════════════════════════════ */
@@ -434,7 +437,7 @@ export function ChatInterface() {
                                     </button>
 
                                     {showModeDropdown && (
-                                        <div className="mode-dropdown-menu">
+                                        <div className="mode-dropdown-menu reveal-up">
                                             {MODES.map((m) => (
                                                 <div
                                                     key={m.value}
@@ -473,7 +476,7 @@ export function ChatInterface() {
                                     </button>
 
                                     {showModelDropdown && (
-                                        <div className="model-selector-dropdown">
+                                        <div className="model-selector-dropdown reveal-up">
                                             <div className="model-dropdown-header">Select Model</div>
                                             {TIER_ORDER.map(tier => (
                                                 <div key={tier} className="model-tier-group">
@@ -524,12 +527,14 @@ export function ChatInterface() {
                         <div className="messages-area" ref={messagesAreaRef} onScroll={handleScroll}>
                             <div className="messages-container">
                                 {messages.map((msg) => (
-                                    <MessageBubble key={msg.id} message={msg} loadThoughtLogs={loadThoughtLogs} />
+                                    <div key={msg.id} className="reveal-up">
+                                        <MessageBubble message={msg} loadThoughtLogs={loadThoughtLogs} />
+                                    </div>
                                 ))}
 
                                 {/* Live Thinking Block */}
-                                {isStreaming && streamState && streamState.conversationId === currentConversation?.id && (
-                                    <div className="message message-assistant">
+                                {isStreaming && (
+                                    <div className="message message-assistant reveal-up">
                                         <ThinkingBlock state={streamState} />
 
                                         {/* Instant Mode Loader - Show while waiting for first content */}
@@ -579,7 +584,7 @@ export function ChatInterface() {
                                         </button>
 
                                         {showModeDropdown && (
-                                            <div className="mode-dropdown-menu">
+                                            <div className="mode-dropdown-menu reveal-up">
                                                 {MODES.map((m) => (
                                                     <div
                                                         key={m.value}
@@ -618,7 +623,7 @@ export function ChatInterface() {
                                             </button>
 
                                             {showModelDropdown && (
-                                                <div className="model-selector-dropdown">
+                                                <div className="model-selector-dropdown reveal-up">
                                                     <div className="model-dropdown-header">Select Model</div>
                                                     {TIER_ORDER.map(tier => (
                                                         <div key={tier} className="model-tier-group">
@@ -667,8 +672,8 @@ export function ChatInterface() {
                 )}
                 {/* ── Background Elements ───────────────────────────── */}
                 <ShootingStars active={!isInChat} />
-            </div>
-        </div>
+            </div >
+        </div >
     );
 }
 
